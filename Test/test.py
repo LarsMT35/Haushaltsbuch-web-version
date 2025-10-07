@@ -35,6 +35,7 @@ while cap.isOpened():
     if results.pose_landmarks:
         mp_drawing.draw_landmarks(
             annotated,
+            
             results.pose_landmarks,
             mp_pose.POSE_CONNECTIONS,
             mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),
@@ -57,3 +58,10 @@ while cap.isOpened():
 
 cap.release()
 cv2.destroyAllWindows()
+
+### Arbeiten mit Regularisieren... was mach bei unserem Modell Sinn
+
+### Basien Optimasation, Hyperparameter optimierung, Trian, Test, Valis sonst nur Train/Test
+
+### Infos für das Projekt, ggf. mit Corssvalidation arbeiten, da wir nur 650 Viedeos für die verschiedenen Übungen haben.
+    ### Falls die Trainingsdaten nicht reichen.
