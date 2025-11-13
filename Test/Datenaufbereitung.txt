@@ -1,0 +1,20 @@
+Datenbereinigung:
+Um festzustellen ob eine Datenbereinigung nötig ist wurden die Videos auf folgende KPIs analysiert:
+    1. Wiedergabezeit
+    2. Auflösung
+    3. Dateigröße
+    4. FPS
+    5. Frameanzahl
+    6. Art der Übung
+
+Classes-Untersuchen:
+Anzahl der Videos pro Sportübung des Trainingssets plotten, um festzustellen welche Sportübung, also welche Class unterrepresentiert sind.
+Mehr Trainingsdaten für die unterrepresentierten Classes erzeugen. 
+    1. Durch das Ändern des Kontrastes der vorhandenen Videos der jeweiligen Class.
+    2. Herunterladen von Videos der unterrepresentierten Classes aus dem Internet.
+
+Feature-Skalierung:
+Da die Features die Koordinaten der "Gelenkpunkte" sind und sonst keine Features vorkommen ist die gleiche Gewichtung dieser sichergestellt.
+
+Kodierung kategorialer Daten:
+.................
