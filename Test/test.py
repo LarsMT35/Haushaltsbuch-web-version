@@ -16,12 +16,12 @@ pose = mp_pose.Pose(static_image_mode=False,
 # Webcam starten
 cap = cv2.VideoCapture(0)
 
-print("🎥 Starte Live-Pose-Erkennung... Drücke ESC zum Beenden.")
+print("Starte Live-Pose-Erkennung... Drücke ESC zum Beenden.")
 
 while cap.isOpened():
     success, frame = cap.read()
     if not success:
-        print("⚠️ Kein Kamerabild gefunden.")
+        print("Kein Kamerabild gefunden.")
         break
 
     # Mediapipe erwartet RGB-Bilder
