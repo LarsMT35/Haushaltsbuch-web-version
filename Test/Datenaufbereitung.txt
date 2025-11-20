@@ -1,11 +1,12 @@
 Datenbereinigung:
+
 Um festzustellen ob eine Datenbereinigung nötig ist wurden die Videos auf folgende KPIs analysiert: 
     1. Auflösung
     2. Dateigröße
     3. FPS
     4. Wiedergabezeit
     5. Frameanzahl
-    6. Anzahl der Videos pro Übung
+    6. Art der Übung
 Nach der Analyse der KPIs wurden Ausreißer bereinigt. Im Detail hieß dies nach Auswertung der Plots: 
     1. Empfehlung des Eingangsmodell (mediapipe): 250x250p bis 1920x1080p -> Niedrigere Auflösungen (ein Video -> s. Plot) entfernen und höhere Auflösungen komprimieren (acht Videos -> s. Plot).
     2. Verteilung über die Labels/Classes sehr unterschiedlich, aber keine Bereinigung nötig, da zum Bilden der "Gelenkpunkte" nicht interssant und für anschlißenden Classifier auch nicht.
@@ -14,13 +15,17 @@ Nach der Analyse der KPIs wurden Ausreißer bereinigt. Im Detail hieß dies nach
     4. Die Videos haben sehr unterschiedliche Wiedergabezeiten (s.Plot) und müssen daher auf eine einheitliche Länge gebracht werden. Dabei ist sicherzustellen, dass die vollständige Übung, die kategorisiert werden soll, innerhalb dieser Zeit enthalten ist.
        Dazu mussten die Ausreißer-Videos (s. Plot) händisch angeschaut werden, um die Wiedergabezeiten vorne und hinten zu beschneiden. Wenn dadurch die vollständige Übung nicht mehr darstellbar ist, wurde das Video entfernd.
     5. Frameanzahl muss aus gleichem Grund wie bei Punkt 3 gleich sein. Nachdem die Lösung für Punkt 3 und 4 umgestzt wurde, war die Frameanzahl gleich.
+    6. Dieses KPI ist für den nächsten Abschnitt der Datenbereinigung relevant.
 
 
 Classes-Untersuchen:
-Anzahl der Videos pro Sportübung des Trainingssets plotten, um festzustellen welche Sportübung, also welche Class unterrepresentiert sind.
-Mehr Trainingsdaten für die unterrepresentierten Classes erzeugen. 
-    1. Durch das Ändern des Kontrastes der vorhandenen Videos der jeweiligen Class.
-    2. Herunterladen von Videos der unterrepresentierten Classes aus dem Internet.
+Die Anzahl der Videos pro Sportübung des Kaggle-Trainingssets wurden geplottet, um festzustellen welche Sportübungen, also welche Classes über-/unterrepresentiert sind. 
+------ Plot bewerten ------ Die Anzahl der Videos muss nicht exakt bei jedem Label gleich sein, aber sollte für die Aufgabe in einer Range liegen, so dass das Netwerk möglichst gleichmäßig trainiert wird.
+Die Range wurde von ---- bis ---- gewählt. Bei Labels, für die der Kaggle-Datensatz mehr Videos als die Obergrenze zur Verfügung stellt, wurden entsprechend Videos entfernd. Bei Labels, bei denen die Anzahl der 
+Videos aus dem Datensatz unterhalb der Untergrenze liegt, wurden mehr Trainingsdaten für die unterrepresentierten Classes erzeugt:
+    1. Eigene Videos aufgenommen, die die Punkte 1, 3 und 4 (und damit 5) erfüllen.
+    2. Durch das Ändern des Kontrastes der vorhandenen Videos der jeweiligen Class.
+    3. Herunterladen von Videos der unterrepresentierten Classes aus dem Internet.
 
 Feature-Skalierung:
 Da die Features die Koordinaten der "Gelenkpunkte" sind und sonst keine Features vorkommen ist die gleiche Gewichtung dieser sichergestellt.
