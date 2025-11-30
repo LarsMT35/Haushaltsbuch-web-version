@@ -8,14 +8,15 @@ Um festzustellen ob eine Datenbereinigung nötig ist wurden die Videos auf folge
     5. Frameanzahl
     6. Art der Übung
 Nach der Analyse der KPIs wurden die Ausreißer bereinigt. Im Detail hieß dies nach Auswertung der Plots: 
-    1. Empfehlung des Eingangsmodell (mediapipe): 250x250p bis 1920x1080p -> Niedrigere Auflösungen (ein Video -> s. Plot) entfernen und höhere Auflösungen komprimieren (acht Videos -> s. Plot).
+    1. Empfehlung des Eingangsmodell (mediapipe): 250x250p bis 1920x1080p -> Niedrigere Auflösungen (ein Video -> s. Plot) entfernen und höhere Auflösungen komprimieren (ein Video -> s. Plot).
     2. Verteilung über die Labels/Classes sehr unterschiedlich, aber keine Bereinigung nötig, da zum Bilden der "Gelenkpunkte" nicht interssant und für unseren anschlißenden Klassifizierer auch nicht.
-    3. Verteilung über die Labels/Classes, aber auch über die Videos inerhalb der Classes sehr unterschiedlich (s. Plot). Ist entscheidend für Classifier nach dem mediapipe-Modell. Denn der Classifier erhält am Eingang für jedes Frame die Koordinaten der Gelenkpunkte. 
+    3. Verteilung über die Videos unterschiedlich (s. Plot). Ist entscheidend für Classifier nach dem mediapipe-Modell. Denn der Classifier erhält am Eingang für jedes Frame die Koordinaten der Gelenkpunkte. 
        Lösung: Einigung auf 25 FPS -> Bei allen Videos mit mehr FPS Frames rausschneiden und bei Videos mit weniger FPS Frames kopieren (s. Skript zur FPS-Anpassung).
     4. Die Videos haben sehr unterschiedliche Wiedergabezeiten (s.Plot) und müssen daher auf eine einheitliche Länge gebracht werden. Dabei ist sicherzustellen, dass die vollständige Übung, die kategorisiert werden soll, innerhalb dieser Zeit enthalten ist.
        Dazu mussten die Ausreißer-Videos (s. Plot) händisch angeschaut werden, um die Wiedergabezeiten vorne und hinten zu beschneiden. Wenn dadurch die vollständige Übung nicht mehr darstellbar ist, wurde das Video entfernd.
     5. Frameanzahl muss aus gleichem Grund wie bei Punkt 3 gleich sein. Nachdem die Lösung für Punkt 3 und 4 umgestzt wurde, war die Frameanzahl gleich.
     6. Dieses KPI ist für den nächsten Abschnitt der Datenbereinigung relevant.
+
 
 Classes-Untersuchung (bezüglich Imbalancen):
 Die Anzahl der Videos pro Sportübung des Kaggle-Trainingssets wurden geplottet, um festzustellen welche Sportübungen, also welche Classes über-/unterrepresentiert sind. 
@@ -38,11 +39,9 @@ Für die Größe von z wird ungefähr dieselbe Skala wie für x verwendet. Somit
 im Bild zu sehen ist) an. Diese wird erstmal nicht in die Features des Klassifizierers übernommen. Falls sich jedoch später Probleme bei der richtigen Dedektion von Gelenkpunkten ergeben, können im Klassifizierer über diesen Parameter Gelenkpunkte/Landmarks aussortiert werden. 
 Die von mediapipe ausgebenen WorldLandmarks (Koordinaten in Metern, die vom Mittelpunkt der Hüften ausgehen) werden nicht als Features für den Klassifizierer benötigt.  
 
-
 Feature-Skalierung:
 Da die Features die Koordinaten der "Gelenkpunkte" sind und sonst keine Features vorkommen ist die gleiche Gewichtung dieser sichergestellt.
 
 Labeling und Kodierung kategorialer Daten:
-Die Viedos werden von unserem Code entsprechend des Ordnerpfades gelabelt. Wenn das Video z.B. im Order "Bizeps-Curls" ist erhält es dieses Label. Eine Kodierung der Label, also Kodierung der Sportübungen in z.B. Nummer 1 bis 10
-ist nicht nötig, da unser Klassifizierer das Label als Text verarbeiten kann. 
-!!!!! ------ !!!!!! checken ob wirklich keine Kodierung !!!!! -------- !!!!!!
+Die Viedos werden von unserem Code entsprechend des Ordnerpfades gelabelt. Wenn das Video z.B. im Order "Bizeps-Curls" ist erhält es dieses Label. Eine Kodierung der Label, also Kodierung der Sportübungen in z.B. Nummer 1 bis 10,
+ist nötig, da unser Klassifizierer nur mit Zahlen arbeitet und diese Zahlen dann in einem konsistenten Bereich liegen.
