@@ -23,7 +23,7 @@ for label in os.listdir(DATEN_ORDNER):
     if not os.path.isdir(label_pfad):
         continue  # Überspringt Dateien
 
-    print(f"\n🏋️‍♂️ Verarbeite Übung: {label}")
+    print(f"Verarbeite Übung: {label}")
 
     # Ausgabe-Unterordner für diese Übung anlegen
     ziel_ordner = os.path.join(AUSGABE_ORDNER, label)
@@ -35,7 +35,7 @@ for label in os.listdir(DATEN_ORDNER):
             continue
 
         video_pfad = os.path.join(label_pfad, datei)
-        print(f"  📹 {datei}")
+        print(f"{datei}")
 
         cap = cv2.VideoCapture(video_pfad)
         frame_daten = []
@@ -69,6 +69,6 @@ for label in os.listdir(DATEN_ORDNER):
         ausgabe_datei = os.path.join(ziel_ordner, f"{basisname}.npy")
         np.save(ausgabe_datei, daten_array)
 
-        print(f"  💾 Gespeichert unter: {ausgabe_datei}")
+        print(f"Gespeichert unter: {ausgabe_datei}")
 
-print("\n✅ Fertig! Alle Videos verarbeitet.")
+print("Fertig! Alle Videos verarbeitet.")
