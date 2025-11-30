@@ -7,9 +7,9 @@ Um festzustellen ob eine Datenbereinigung nötig ist wurden die Videos auf folge
     4. Wiedergabezeit
     5. Frameanzahl
     6. Art der Übung
-Nach der Analyse der KPIs wurden Ausreißer bereinigt. Im Detail hieß dies nach Auswertung der Plots: 
+Nach der Analyse der KPIs wurden die Ausreißer bereinigt. Im Detail hieß dies nach Auswertung der Plots: 
     1. Empfehlung des Eingangsmodell (mediapipe): 250x250p bis 1920x1080p -> Niedrigere Auflösungen (ein Video -> s. Plot) entfernen und höhere Auflösungen komprimieren (acht Videos -> s. Plot).
-    2. Verteilung über die Labels/Classes sehr unterschiedlich, aber keine Bereinigung nötig, da zum Bilden der "Gelenkpunkte" nicht interssant und für anschlißenden Classifier auch nicht.
+    2. Verteilung über die Labels/Classes sehr unterschiedlich, aber keine Bereinigung nötig, da zum Bilden der "Gelenkpunkte" nicht interssant und für unseren anschlißenden Klassifizierer auch nicht.
     3. Verteilung über die Labels/Classes, aber auch über die Videos inerhalb der Classes sehr unterschiedlich (s. Plot). Ist entscheidend für Classifier nach dem mediapipe-Modell. Denn der Classifier erhält am Eingang für jedes Frame die Koordinaten der Gelenkpunkte. 
        Lösung: Einigung auf 25 FPS -> Bei allen Videos mit mehr FPS Frames rausschneiden und bei Videos mit weniger FPS Frames kopieren (s. Skript zur FPS-Anpassung).
     4. Die Videos haben sehr unterschiedliche Wiedergabezeiten (s.Plot) und müssen daher auf eine einheitliche Länge gebracht werden. Dabei ist sicherzustellen, dass die vollständige Übung, die kategorisiert werden soll, innerhalb dieser Zeit enthalten ist.
@@ -17,8 +17,7 @@ Nach der Analyse der KPIs wurden Ausreißer bereinigt. Im Detail hieß dies nach
     5. Frameanzahl muss aus gleichem Grund wie bei Punkt 3 gleich sein. Nachdem die Lösung für Punkt 3 und 4 umgestzt wurde, war die Frameanzahl gleich.
     6. Dieses KPI ist für den nächsten Abschnitt der Datenbereinigung relevant.
 
-
-Classes-Untersuchen:
+Classes-Untersuchung (bezüglich Imbalancen):
 Die Anzahl der Videos pro Sportübung des Kaggle-Trainingssets wurden geplottet, um festzustellen welche Sportübungen, also welche Classes über-/unterrepresentiert sind. 
 ------ Plot bewerten ------ Die Anzahl der Videos muss nicht exakt bei jedem Label gleich sein, aber sollte für die Aufgabe in einer Range liegen, so dass das Netwerk möglichst gleichmäßig trainiert wird.
 Die Range wurde von ---- bis ---- gewählt. Bei Labels, für die der Kaggle-Datensatz mehr Videos als die Obergrenze zur Verfügung stellt, wurden entsprechend Videos entfernd. Bei Labels, bei denen die Anzahl der 
@@ -27,8 +26,23 @@ Videos aus dem Datensatz unterhalb der Untergrenze liegt, wurden mehr Trainingsd
     2. Durch das Ändern des Kontrastes der vorhandenen Videos der jeweiligen Class.
     3. Herunterladen von Videos der unterrepresentierten Classes aus dem Internet.
 
+Daten-Splitting:
+Da wir wie in der Vorlesung vereibart kein Validation-Set verwenden, splitten wir die Daten nur in Trainings- und Test-Set. Dazu verwenden wir die empfohlene Gewichtung von 80%/20%.
+Das Bilden eines Validation-Sets würde aufgrund der Größe des vorhandenen Kaggle-Datensatzes auch nicht wirklich Sinn ergeben, da uns dann zu viele Trainingsdaten verloren gehen.
+
+Feature-Engineering:
+Die Features des Eingangsmodells (mediapipe) sind vorgegeben bzw. das Modell macht selber Feature-Extraction. Deshalb werden die Features hier nicht verändert.
+Die Features unseres Klassifizierers bestehen aus einem Teil der Outputs von mediapipe. Features, die wir definitiv aus den Outputs von mediapipe extrahieren, sind die von mediapipe sogenannten Landmarks, also die erkannten Gelenkpunkte. Erstmal wird jeder Landmark mit 
+den 3D-Koordinaten (x,y,z) übernommen. x und y sind dabei Bildbreite (x) und -höhe (y), die auf 0,0 bis 1,0 normalisiert sind. z ist die Landmarkentiefe, wobei die Tiefe an der Mitte der Hüften als Ursprung dient. Je kleiner der Wert, desto näher ist der Gelenkpunkt an der Kamera. 
+Für die Größe von z wird ungefähr dieselbe Skala wie für x verwendet. Somit sind die einzigen drei (und erstmal einzigen) Features die Koordinaten der Landmarks für jedes Videoframe. Mediapipe gibt für die Landmark auch noch die visibility (Wahrscheinlichkeit, dass das Wahrzeichen 
+im Bild zu sehen ist) an. Diese wird erstmal nicht in die Features des Klassifizierers übernommen. Falls sich jedoch später Probleme bei der richtigen Dedektion von Gelenkpunkten ergeben, können im Klassifizierer über diesen Parameter Gelenkpunkte/Landmarks aussortiert werden. 
+Die von mediapipe ausgebenen WorldLandmarks (Koordinaten in Metern, die vom Mittelpunkt der Hüften ausgehen) werden nicht als Features für den Klassifizierer benötigt.  
+
+
 Feature-Skalierung:
 Da die Features die Koordinaten der "Gelenkpunkte" sind und sonst keine Features vorkommen ist die gleiche Gewichtung dieser sichergestellt.
 
-Kodierung kategorialer Daten:
-.................
+Labeling und Kodierung kategorialer Daten:
+Die Viedos werden von unserem Code entsprechend des Ordnerpfades gelabelt. Wenn das Video z.B. im Order "Bizeps-Curls" ist erhält es dieses Label. Eine Kodierung der Label, also Kodierung der Sportübungen in z.B. Nummer 1 bis 10
+ist nicht nötig, da unser Klassifizierer das Label als Text verarbeiten kann. 
+!!!!! ------ !!!!!! checken ob wirklich keine Kodierung !!!!! -------- !!!!!!
