@@ -13,7 +13,7 @@ Nach der Analyse der KPIs wurden die Ausreißer bereinigt. Im Detail hieß dies 
     3. Verteilung über die Videos unterschiedlich (s. Plot). Ist entscheidend für Classifier nach dem mediapipe-Modell. Denn der Classifier erhält am Eingang für jedes Frame die Koordinaten der Gelenkpunkte. 
        Lösung: Einigung auf 25 FPS -> Bei allen Videos mit mehr FPS Frames rausschneiden und bei Videos mit weniger FPS Frames kopieren (s. Skript zur FPS-Anpassung).
     4. Die Videos haben sehr unterschiedliche Wiedergabezeiten (s.Plot) und müssen daher auf eine einheitliche Länge gebracht werden. Dabei ist sicherzustellen, dass die vollständige Übung, die kategorisiert werden soll, innerhalb dieser Zeit enthalten ist.
-       Dazu mussten die Ausreißer-Videos (s. Plot) händisch angeschaut werden, um die Wiedergabezeiten vorne und hinten zu beschneiden. Wenn dadurch die vollständige Übung nicht mehr darstellbar ist, wurde das Video entfernd.
+       ####### Noch anpassen (siehe Skript)  --->    Dazu mussten die Ausreißer-Videos (s. Plot) händisch angeschaut werden, um die Wiedergabezeiten vorne und hinten zu beschneiden. Wenn dadurch die vollständige Übung nicht mehr darstellbar ist, wurde das Video entfernd.
     5. Frameanzahl muss aus gleichem Grund wie bei Punkt 3 gleich sein. Nachdem die Lösung für Punkt 3 und 4 umgestzt wurde, war die Frameanzahl gleich.
     6. Dieses KPI ist für den nächsten Abschnitt der Datenbereinigung relevant.
 
@@ -27,9 +27,6 @@ Videos aus dem Datensatz unterhalb der Untergrenze liegt, wurden mehr Trainingsd
     2. Durch das Ändern des Kontrastes der vorhandenen Videos der jeweiligen Class.
     3. Herunterladen von Videos der unterrepresentierten Classes aus dem Internet.
 
-Daten-Splitting:
-Da wir wie in der Vorlesung vereibart kein Validation-Set verwenden, splitten wir die Daten nur in Trainings- und Test-Set. Dazu verwenden wir die empfohlene Gewichtung von 80%/20%.
-Das Bilden eines Validation-Sets würde aufgrund der Größe des vorhandenen Kaggle-Datensatzes auch nicht wirklich Sinn ergeben, da uns dann zu viele Trainingsdaten verloren gehen.
 
 Feature-Engineering:
 Die Features des Eingangsmodells (mediapipe) sind vorgegeben bzw. das Modell macht selber Feature-Extraction. Deshalb werden die Features hier nicht verändert.
@@ -40,8 +37,12 @@ im Bild zu sehen ist) an. Diese wird erstmal nicht in die Features des Klassifiz
 Die von mediapipe ausgebenen WorldLandmarks (Koordinaten in Metern, die vom Mittelpunkt der Hüften ausgehen) werden nicht als Features für den Klassifizierer benötigt.  
 
 Feature-Skalierung:
-Da die Features die Koordinaten der "Gelenkpunkte" sind und sonst keine Features vorkommen ist die gleiche Gewichtung dieser sichergestellt.
+Da die Features die Koordinaten der "Gelenkpunkte" sind und sonst keine Features vorkommen, ist die gleiche Gewichtung dieser sichergestellt.
 
 Labeling und Kodierung kategorialer Daten:
-Die Viedos werden von unserem Code entsprechend des Ordnerpfades gelabelt. Wenn das Video z.B. im Order "Bizeps-Curls" ist erhält es dieses Label. Eine Kodierung der Label, also Kodierung der Sportübungen in z.B. Nummer 1 bis 10,
-ist nötig, da unser Klassifizierer nur mit Zahlen arbeitet und diese Zahlen dann in einem konsistenten Bereich liegen.
+Die Viedos werden von unserem Code entsprechend des Ordnerpfades gelabelt. Wenn das Video z.B. im Order "Bizeps-Curls" ist erhält es dieses Label. Eine Kodierung der Label, also eine Kodierung der Sportübungen in z.B. Nummer 1 bis 10,
+ist nötig sobald wir die Videos über mediapipe in "Gelenkpunkt"/Koordinaten-Dateien gewandelt haben. Denn unser Klassifizierer arbeitet nur mit Zahlen und mit der Kodierung erhalten wir Zahlen, die dann in einem konsistenten Bereich liegen.
+
+Daten-Splitting:
+Da wir wie in der Vorlesung vereibart kein Validation-Set verwenden, splitten wir die Daten nur in Trainings- und Test-Set. Dazu verwenden wir die empfohlene Gewichtung von 80%/20%.
+Das Bilden eines Validation-Sets würde aufgrund der Größe des vorhandenen Kaggle-Datensatzes auch nicht wirklich Sinn ergeben, da uns dann zu viele Trainingsdaten verloren gehen.

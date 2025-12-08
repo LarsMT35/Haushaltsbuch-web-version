@@ -1,4 +1,4 @@
-import cv2
+import cv2 #from opencv-python
 import os
 import shutil
 import numpy as np
@@ -104,7 +104,7 @@ class VideoCleaner:
             cut_index = (current_count - target_frame_count) // 2
             return frames[cut_index:cut_index + target_frame_count]
 
-        # Fall 2: Video ist zu kurz -> letzte Frames kopieren
+        # Fall 2: Video ist zu kurz -> letzte Frames kopieren                   #Später schauen, ob Klassifizierer damit umgehen kann, wenn am Ende Standbild
         if current_count < target_frame_count and current_count > 0:
             missing = target_frame_count - current_count
             return frames + [frames[-1]] * missing
