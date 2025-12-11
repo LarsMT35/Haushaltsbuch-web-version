@@ -1,7 +1,6 @@
 import os
 import cv2
 import pandas as pd
-
 from Feature_Extraction import VideoCleaner
 
 
@@ -20,7 +19,7 @@ error_log = []
 # ==========================================
 # 1. VIDEODATEN SAMMELN
 # ==========================================
-print("🔍 Sammle Videoinformationen...")
+print("Sammle Videoinformationen...")
 
 video_infos = []
 
@@ -58,7 +57,7 @@ for root, dirs, files in os.walk(DATEN_ORDNER):
 # In DataFrame packen
 gesammelteDaten = pd.DataFrame(video_infos)
 
-print(f"📦 Gefundene Videos: {len(gesammelteDaten)}")
+print(f"Gefundene Videos: {len(gesammelteDaten)}")
 
 if len(gesammelteDaten) == 0:
     print("Keine Videos im Ordner 'Datensatz' gefunden! Skript wird beendet.")
@@ -68,7 +67,7 @@ if len(gesammelteDaten) == 0:
 # ==========================================
 # 2. VIDEOS BEREINIGEN MIT VideoCleaner
 # ==========================================
-print("🧹 Starte Bereinigung...")
+print("Starte Bereinigung...")
 
 bereiniger = VideoCleaner(
     dataframe=gesammelteDaten,
