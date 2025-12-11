@@ -1,7 +1,6 @@
 import os
 import cv2
 import pandas as pd
-
 from Feature_Extraction import VideoCleaner
 
 
