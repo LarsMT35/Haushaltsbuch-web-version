@@ -1,0 +1,12 @@
+Erstes Training:
+
+Folgende Hyperparameter waren eingestellt:
+Filtergröße (Kernel Size): 5
+Anzahl der Filter: Eingang: 64 Hidden_Layer_1: 128 Hidden_Layer_2: 256
+Stride (Schrittweite): 1 (standardmäßig)
+Pooling-Größe: floating, da wir "GlobalAveragePooling" verwendet haben
+Schichtentiefe: 2 hidden Layers
+
+Ergebnisse:
+Accuracy: ca. 70%
+Confusion Matrix: siehe Confusion Matrix_1

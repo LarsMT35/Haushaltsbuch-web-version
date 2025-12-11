@@ -27,21 +27,30 @@ Videos aus dem Datensatz unterhalb der Untergrenze liegt, wurden mehr Trainingsd
     2. Durch das Ändern des Kontrastes der vorhandenen Videos der jeweiligen Class.
     3. Herunterladen von Videos der unterrepresentierten Classes aus dem Internet.
 
+Weitere Imbalancen:
+Zu den weiteren Imbalancen könnten die physischen Eigenschaften (Größe, Körperproportionen etc.), das Geschlecht, der Hautton oder die Kleidung der Person im Video zählen. Da wir aber von dem Vormodell "mediapipe" nur die Gelenkpunkte bzw. dessen Koordinaten übernehmen, spielen diese 
+möglichen Imbalancen für unseren Klassifizierer keinen Rolle mehr, sondern wirken sich wenn auf das fertige Modell "mediapipe" aus. Da dieses schon vortrainiert ist und wir das fertige Modell nutzen, spielen diese "Variationen" hier auch keine Rolle.
+
 
 Feature-Engineering:
-Die Features des Eingangsmodells (mediapipe) sind vorgegeben bzw. das Modell macht selber Feature-Extraction. Deshalb werden die Features hier nicht verändert.
-Die Features unseres Klassifizierers bestehen aus einem Teil der Outputs von mediapipe. Features, die wir definitiv aus den Outputs von mediapipe extrahieren, sind die von mediapipe sogenannten Landmarks, also die erkannten Gelenkpunkte. Erstmal wird jeder Landmark mit 
-den 3D-Koordinaten (x,y,z) übernommen. x und y sind dabei Bildbreite (x) und -höhe (y), die auf 0,0 bis 1,0 normalisiert sind. z ist die Landmarkentiefe, wobei die Tiefe an der Mitte der Hüften als Ursprung dient. Je kleiner der Wert, desto näher ist der Gelenkpunkt an der Kamera. 
-Für die Größe von z wird ungefähr dieselbe Skala wie für x verwendet. Somit sind die einzigen drei (und erstmal einzigen) Features die Koordinaten der Landmarks für jedes Videoframe. Mediapipe gibt für die Landmark auch noch die visibility (Wahrscheinlichkeit, dass das Wahrzeichen 
-im Bild zu sehen ist) an. Diese wird erstmal nicht in die Features des Klassifizierers übernommen. Falls sich jedoch später Probleme bei der richtigen Dedektion von Gelenkpunkten ergeben, können im Klassifizierer über diesen Parameter Gelenkpunkte/Landmarks aussortiert werden. 
-Die von mediapipe ausgebenen WorldLandmarks (Koordinaten in Metern, die vom Mittelpunkt der Hüften ausgehen) werden nicht als Features für den Klassifizierer benötigt.  
+Die Features des Eingangsmodells (mediapipe) sind vorgegeben bzw. das Modell macht selber Feature-Extraction. Deshalb werden die Features hier nicht verändert und wir schauen lediglich, dass wir eine Video-Einlesung als Eingabe haben. Denn grundsätzlich sind Bilder, aber auch 
+Videos und Live-Streams (z.B. webcam) nach einer entsprechenden Vorverarbeitung als Eingabe möglich. Wir müssen also eine Vorverarbeitung der Viedos vornehmen, um die Eingabeframes als Numpy-Arrays zu laden, die mediapipe am Eingang erwartet.
+Die Features unseres Klassifizierers bestehen aus einem nachverarbeiteten Teil der Outputs von mediapipe. Features, die wir definitiv aus den Outputs von mediapipe extrahieren, sind die sogenannten Landmarks, also die Koordinaten der erkannten Gelenkpunkte. Wir müssen also die Extraktion 
+der Landmarks hinter den Ausgang des mediapipe-Modells implementieren. Dazu nutzen wir als Hilfestellung: https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python?hl=de#videoErstmal. Am Ende möchten wir für jedes Video eine CSV-Datei erhalten, die das Label des Videos 
+übernimmt und für jeden Frame die Gelenkpunkt-Koordinaten mit dem entsprechenden Zeitstempel und den Landmark-Nummern enthält. Dabei wird jeder Landmark mit den 3D-Koordinaten (x,y,z) übernommen. x und y sind dabei Bildbreite (x) und -höhe (y), die auf 0,0 bis 1,0 normalisiert sind. 
+z ist die Landmarkentiefe, wobei die Tiefe an der Mitte der Hüften als Ursprung dient. Je kleiner der Wert, desto näher ist der Gelenkpunkt an der Kamera. Für die Größe von z wird ungefähr dieselbe Skala wie für x verwendet. Somit sind die einzigen (und erstmal einzigen) Features die 
+Koordinaten der Landmarks für jedes Videoframe. Es besteht die Möglichkeit für die Landmarks auch noch die visibility (Wahrscheinlichkeit, dass die Landmark (bzw. der Gelenkpunkt) im Bild zu sehen ist) an. Diese wird erstmal nicht in die Features 
+des Klassifizierers übernommen. Falls sich jedoch später Probleme bei der richtigen Dedektion von Gelenkpunkten ergeben, können im Klassifizierer über diesen Parameter Gelenkpunkte/Landmarks aussortiert werden. 
+Die Möglichkeit, WorldLandmarks (Koordinaten in Metern, die vom Mittelpunkt der Hüften ausgehen) zu extrahieren wird nicht implementiert, da dies nicht als Features für den Klassifizierer benötigt werden.  
 
 Feature-Skalierung:
 Da die Features die Koordinaten der "Gelenkpunkte" sind und sonst keine Features vorkommen, ist die gleiche Gewichtung dieser sichergestellt.
 
+
 Labeling und Kodierung kategorialer Daten:
 Die Viedos werden von unserem Code entsprechend des Ordnerpfades gelabelt. Wenn das Video z.B. im Order "Bizeps-Curls" ist erhält es dieses Label. Eine Kodierung der Label, also eine Kodierung der Sportübungen in z.B. Nummer 1 bis 10,
 ist nötig sobald wir die Videos über mediapipe in "Gelenkpunkt"/Koordinaten-Dateien gewandelt haben. Denn unser Klassifizierer arbeitet nur mit Zahlen und mit der Kodierung erhalten wir Zahlen, die dann in einem konsistenten Bereich liegen.
+
 
 Daten-Splitting:
 Da wir wie in der Vorlesung vereibart kein Validation-Set verwenden, splitten wir die Daten nur in Trainings- und Test-Set. Dazu verwenden wir die empfohlene Gewichtung von 80%/20%.

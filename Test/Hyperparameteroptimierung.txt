@@ -1,0 +1,34 @@
+Eine richtige Hyperparameteroptimierung haben wir nicht durchgeführt, da wir ja ohne Validation-Set gearbeiten haben.
+Dennoch haben wir uns über folgende Hyperparameter Gedanken gemacht:
+
+Filtergröße (Kernel Size)
+    Prinzipiell wollen wir bei einer kleineren Größe anfangen und uns dann steigern. Da wir grundsätzlich aber 
+    langsamere Signale mit längeren Mustern, wird ein größerer Filter vermutlich sinnvoll sein, um mehr Merkmale
+    zu erkennen.
+
+Anzahl der Filter
+    Hier wollen wir mit einer kleinen Anzahl beginnen und zwar 64 in der ersten Schicht (tiefere Schichten dann 
+    entsprechen höher 128, 256...). Solange es die Rechenzeit zulässt und das Risiko von Overfitting nicht droht,
+    erhöhen wir dann die Anzahl, um evtl. komplexere Muster (an Gelenkpunkten) zu erkennen.
+
+Stride (Schrittweite)
+    Wir starten mit dem Standard 1. Dann evtl. mit der Stride hochgehen (2, 3 ...) mit der Hoffnung, dass die Größe 
+    des Feature Maps reduziert wird. Dann schauen ob Effizienzsteigerung (Recheneffizienz) möglich sind, solange 
+    die Accuracy nicht leidet und mehr Effizienz überhaupt gewünscht/nötig ist.
+
+Pooling-Größe
+    Wir wollen ein "GlobalAveragePooling" verwenden, da es die Sequenz auf einen Wert pro Filter reduziert, 
+    indem es den Durchschnitt über alle Zeitschritte nimmt. Damit ist die Pooling-Größe variabel.
+    Vorteile:
+    - Keine harten Entscheidungen (wie bei MaxPooling, das nur das Maximum behält)
+    - Stabilere Gradienten beim Training
+    - Reduziert die Dimension für Dense-Layer, ohne wichtige zeitliche Muster zu verlieren
+
+Schichtentiefe
+    Wir starten mit einer kleinen Anzahl von 2 hidden Layers. Durch Ausprobieren soll dann geschaut werden, ob mit 
+    mehr Schichten die Accuracy erhöht werden kann.
+
+Schichtenweite: Wird über die Anzahl der Filter gesteuert (da CNN).
+
+
+Die Ergbnisse des "Rumspielens" mit einigen dieser Paramter kann der "Traningsverlauf.txt" entnommen werden.
