@@ -17,18 +17,23 @@ Stride (Schrittweite)
     die Accuracy nicht leidet und mehr Effizienz überhaupt gewünscht/nötig ist.
 
 Pooling-Größe
-    Wir wollen ein "GlobalAveragePooling" verwenden, da es die Sequenz auf einen Wert pro Filter reduziert, 
-    indem es den Durchschnitt über alle Zeitschritte nimmt. Damit ist die Pooling-Größe variabel.
-    Vorteile:
-    - Keine harten Entscheidungen (wie bei MaxPooling, das nur das Maximum behält)
-    - Stabilere Gradienten beim Training
-    - Reduziert die Dimension für Dense-Layer, ohne wichtige zeitliche Muster zu verlieren
+    1.  Wir wollen ertsmal nur ein "GlobalAveragePooling" vor dem Dense-Layer verwenden, da es die Sequenz auf einen Wert 
+        pro Filter reduziert, indem es den Durchschnitt über alle Zeitschritte nimmt. Damit ist die Pooling-Größe variabel.
+        Vorteile:
+        - Keine harten Entscheidungen (wie bei MaxPooling, das nur das Maximum behält)
+        - Stabilere Gradienten beim Training
+        - Reduziert die Dimension für Dense-Layer, ohne wichtige zeitliche Muster zu verlieren
+    2.  Dann soll ausprobiert werden, wie sich die Ergebnisse verändern, wenn wir MaxPoolings am Ende der Conv1D-Layer hinzufügen.
+        Hier fangen wir mit dem bewährten Wert "2" an und erhöhen um 1er-Schtitte später, um Veränderungen des Ergebnisse zu beobachten.
 
-Schichtentiefe
+Schichtentiefe (Anzahl der Neuronen bzw. nicht-linearen Aktivierungen in einer Schicht)
     Wir starten mit einer kleinen Anzahl von 2 hidden Layers. Durch Ausprobieren soll dann geschaut werden, ob mit 
     mehr Schichten die Accuracy erhöht werden kann.
 
-Schichtenweite: Wird über die Anzahl der Filter gesteuert (da CNN).
+Schichtenweite: 
+    Bei den Conv1D-Layers wird diese über die Anzahl der Filter gesteuert (da CNN). Bei dem Dense-Layer starten wir mit H=128,
+    um die Modellkapazität solide aufzustellen (genug Neuronen). Wenn das Training nicht gut performt, soll hier eine Erhöhung 
+    versucht werden, aber ohne dass man ins Overfitting kommt, sich eine schlechte Generalisierung einstellt oder die Trainigszeit zu lang wird.
 
 
 Die Ergbnisse des "Rumspielens" mit einigen dieser Paramter kann der "Traningsverlauf.txt" entnommen werden.

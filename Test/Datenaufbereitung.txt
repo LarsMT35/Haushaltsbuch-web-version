@@ -12,9 +12,10 @@ Nach der Analyse der KPIs wurden die Ausreißer bereinigt. Im Detail hieß dies 
     2. Verteilung über die Labels/Classes sehr unterschiedlich, aber keine Bereinigung nötig, da zum Bilden der "Gelenkpunkte" nicht interssant und für unseren anschlißenden Klassifizierer auch nicht.
     3. Verteilung über die Videos unterschiedlich (s. Plot). Ist entscheidend für Classifier nach dem mediapipe-Modell. Denn der Classifier erhält am Eingang für jedes Frame die Koordinaten der Gelenkpunkte. 
        Lösung: Einigung auf 25 FPS -> Bei allen Videos mit mehr FPS Frames rausschneiden und bei Videos mit weniger FPS Frames kopieren (s. Skript zur FPS-Anpassung).
-    4. Die Videos haben sehr unterschiedliche Wiedergabezeiten (s.Plot) und müssen daher auf eine einheitliche Länge gebracht werden. Dabei ist sicherzustellen, dass die vollständige Übung, die kategorisiert werden soll, innerhalb dieser Zeit enthalten ist.
-       ####### Noch anpassen (siehe Skript)  --->    Dazu mussten die Ausreißer-Videos (s. Plot) händisch angeschaut werden, um die Wiedergabezeiten vorne und hinten zu beschneiden. Wenn dadurch die vollständige Übung nicht mehr darstellbar ist, wurde das Video entfernd.
-    5. Frameanzahl muss aus gleichem Grund wie bei Punkt 3 gleich sein. Nachdem die Lösung für Punkt 3 und 4 umgestzt wurde, war die Frameanzahl gleich.
+    4. Die Videos haben sehr unterschiedliche Wiedergabezeiten (s.Plot) und müssen daher auf eine einheitliche Länge gebracht werden. Dabei ist sicherzustellen, dass die vollständige Übung bzw. eine Wiederholung, die kategorisiert werden soll, innerhalb dieser Zeit enthalten ist.
+       Dazu wird der Durchschnitt der Wiedergabezeiten berechnet (siehe Skript) und dann alle Viedos auf diese Länge gekürzt oder ertweitert werden. Videos, die zu kurz sind, werden durch ein Standbild am Ende verlängt und Videos, die zu lang sind, werden am Ende frühzeitiger 
+       gestoppt (siehe Skipt). Die Videos werden dann vor dem Trainig des Klassifizierers händisch angeschaut, ob bei jeder Übung min. eine Wiederholung zu sehen ist. Wenn durch die Video-Beschneidung die vollständige Übung nicht mehr darstellbar ist, wurde das Video entfernd.
+    5. Die Frameanzahl muss aus gleichem Grund wie bei Punkt 3 gleich sein. Nachdem die Lösung für Punkt 3 und 4 umgestzt wurde, war die Frameanzahl gleich.
     6. Dieses KPI ist für den nächsten Abschnitt der Datenbereinigung relevant.
 
 
@@ -39,8 +40,8 @@ Die Features unseres Klassifizierers bestehen aus einem nachverarbeiteten Teil d
 der Landmarks hinter den Ausgang des mediapipe-Modells implementieren. Dazu nutzen wir als Hilfestellung: https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker/python?hl=de#videoErstmal. Am Ende möchten wir für jedes Video eine CSV-Datei erhalten, die das Label des Videos 
 übernimmt und für jeden Frame die Gelenkpunkt-Koordinaten mit dem entsprechenden Zeitstempel und den Landmark-Nummern enthält. Dabei wird jeder Landmark mit den 3D-Koordinaten (x,y,z) übernommen. x und y sind dabei Bildbreite (x) und -höhe (y), die auf 0,0 bis 1,0 normalisiert sind. 
 z ist die Landmarkentiefe, wobei die Tiefe an der Mitte der Hüften als Ursprung dient. Je kleiner der Wert, desto näher ist der Gelenkpunkt an der Kamera. Für die Größe von z wird ungefähr dieselbe Skala wie für x verwendet. Somit sind die einzigen (und erstmal einzigen) Features die 
-Koordinaten der Landmarks für jedes Videoframe. Es besteht die Möglichkeit für die Landmarks auch noch die visibility (Wahrscheinlichkeit, dass die Landmark (bzw. der Gelenkpunkt) im Bild zu sehen ist) an. Diese wird erstmal nicht in die Features 
-des Klassifizierers übernommen. Falls sich jedoch später Probleme bei der richtigen Dedektion von Gelenkpunkten ergeben, können im Klassifizierer über diesen Parameter Gelenkpunkte/Landmarks aussortiert werden. 
+Koordinaten der Landmarks für jedes Videoframe. Es besteht die Möglichkeit für die Landmarks auch noch die visibility (Wahrscheinlichkeit, dass die Landmark (bzw. der Gelenkpunkt) im Bild zu sehen ist) auszugeben. Diese wird erstmal nicht in die Features 
+des Klassifizierers übernommen. Falls sich jedoch später Probleme bei der richtigen Dedektion von Gelenkpunkten ergeben, können wir die visibility als zusätzliches Feature an den Klassifizierer übergeben. 
 Die Möglichkeit, WorldLandmarks (Koordinaten in Metern, die vom Mittelpunkt der Hüften ausgehen) zu extrahieren wird nicht implementiert, da dies nicht als Features für den Klassifizierer benötigt werden.  
 
 Feature-Skalierung:
