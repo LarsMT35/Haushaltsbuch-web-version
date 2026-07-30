@@ -182,6 +182,22 @@ class RuleUpdate(BaseModel):
 
 # ---------------------------------------------------------------- Buchungen
 
+class TagOut(ORMModel):
+    id: int
+    name: str
+
+
+class SplitOut(ORMModel):
+    id: int
+    category_id: int
+    amount: Decimal
+
+
+class SplitIn(BaseModel):
+    category_id: int
+    amount: Decimal
+
+
 class TransactionOut(ORMModel):
     id: int
     account_id: int
@@ -199,6 +215,8 @@ class TransactionOut(ORMModel):
     import_batch_id: int | None
     is_manual: bool
     transfer_id: int | None
+    splits: list[SplitOut] = []
+    tags: list[TagOut] = []
 
 
 class TransactionPage(BaseModel):
@@ -322,6 +340,46 @@ class AnalyzeOut(BaseModel):
     sample_rows: list[list[str]]
 
 
+# ------------------------------------------------------------------ Budgets
+
+class BudgetOut(ORMModel):
+    id: int
+    category_id: int
+    account_id: int | None
+    amount: Decimal
+    period: str
+    valid_from: date
+
+
+class BudgetCreate(BaseModel):
+    category_id: int
+    account_id: int | None = None
+    amount: Decimal
+    valid_from: date
+
+
+class BudgetThresholds(BaseModel):
+    """Ampel-Schwellwerte in Prozent, konfigurierbar (4.8)."""
+
+    green_below: float = 80.0
+    red_from: float = 98.0
+
+
+class BudgetStatusRow(BaseModel):
+    category_id: int
+    category_name: str
+    budget: float
+    spent: float
+    percent: float
+    ampel: str  # gruen | gelb | rot
+
+
+class BudgetStatusOut(BaseModel):
+    month: str
+    thresholds: BudgetThresholds
+    rows: list[BudgetStatusRow]
+
+
 # --------------------------------------------------------------- Dashboard
 
 class MonthValue(BaseModel):
@@ -357,3 +415,42 @@ class DashboardSummary(BaseModel):
     by_category: list[CategoryValue]
     fixed_vs_variable: dict
     savings_movement: list[MonthValue]
+
+
+class NetWorthSeries(BaseModel):
+    account_id: int
+    name: str
+    values: list[float]  # Monatsend-Saldo je Monat
+
+
+class NetWorthOut(BaseModel):
+    months: list[str]
+    series: list[NetWorthSeries]
+    total: list[float]
+
+
+class SavingsRateOut(BaseModel):
+    months: list[str]
+    income: list[float]
+    expenses: list[float]
+    rate: list[float]  # Prozent (Bilanz ÷ Einnahmen)
+
+
+class YearComparisonRow(BaseModel):
+    category_id: int | None
+    category_name: str
+    values: list[float]
+
+
+class YearComparisonOut(BaseModel):
+    years: list[int]
+    rows: list[YearComparisonRow]
+
+
+class LayoutTile(BaseModel):
+    id: str
+    visible: bool = True
+
+
+class LayoutOut(BaseModel):
+    tiles: list[LayoutTile]

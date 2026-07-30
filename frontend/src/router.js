@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { getToken } from './api.js'
 
+import BudgetsView from './views/BudgetsView.vue'
 import CategoriesView from './views/CategoriesView.vue'
 import DashboardView from './views/DashboardView.vue'
 import ImportView from './views/ImportView.vue'
@@ -16,6 +17,7 @@ export const router = createRouter({
     { path: '/', component: DashboardView },
     { path: '/buchungen', component: TransactionsView },
     { path: '/import', component: ImportView },
+    { path: '/budgets', component: BudgetsView },
     { path: '/kategorien', component: CategoriesView },
     { path: '/regeln', component: RulesView },
     { path: '/einstellungen', component: SettingsView },

@@ -77,7 +77,20 @@ a { color: var(--accent); text-decoration: none; }
 }
 .tile.wide { grid-column: span 2; }
 @media (max-width: 800px) { .tile.wide { grid-column: span 1; } .sidebar { display: none; } }
+.tile { position: relative; }
 .tile h3 { margin: 0 0 .5rem; font-size: .95rem; color: var(--muted); }
+.tile-close {
+  position: absolute; top: .4rem; right: .4rem; border: none; background: none;
+  color: var(--muted); padding: .1rem .3rem; font-size: .75rem;
+}
+.tile-close:hover { color: var(--negative); }
+/* Ampel: feste Farben, unabhängig vom Farbschema (4.8/4.10) */
+.ampel { display: inline-block; width: .75rem; height: .75rem; border-radius: 50%; }
+.ampel.gruen { background: var(--ampel-gruen); }
+.ampel.gelb { background: var(--ampel-gelb); }
+.ampel.rot { background: var(--ampel-rot); }
+.budget-bar { height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.budget-bar > div { height: 100%; }
 .tile .big { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 /* Warnkacheln farblich abgesetzt (4.9.1) */
 .tile.warn { background: var(--warn-bg); border-color: var(--warn-border); }

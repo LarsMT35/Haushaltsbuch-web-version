@@ -10,8 +10,15 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import accessible_account_ids, get_current_user, require_account_access
-from ..models import Category, Transaction, User
-from ..schemas import ManualTransactionCreate, TransactionOut, TransactionPage, TransactionUpdate
+from ..models import Category, Tag, Transaction, TransactionSplit, TransactionTag, User
+from ..schemas import (
+    ManualTransactionCreate,
+    SplitIn,
+    TagOut,
+    TransactionOut,
+    TransactionPage,
+    TransactionUpdate,
+)
 from ..services.audit import log
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -20,7 +27,7 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 def _filtered_query(db: Session, user: User, *, account_id: int | None, category_id: int | None,
                     date_from: date | None, date_to: date | None, text: str | None,
                     amount_min: float | None, amount_max: float | None,
-                    unassigned: bool, include_transfers: bool):
+                    unassigned: bool, include_transfers: bool, tag: str | None = None):
     ids = accessible_account_ids(db, user)
     q = db.query(Transaction).filter(Transaction.account_id.in_(ids))
     if account_id is not None:
@@ -42,6 +49,10 @@ def _filtered_query(db: Session, user: User, *, account_id: int | None, category
         q = q.filter(Transaction.amount <= amount_max)
     if unassigned:
         q = q.filter(Transaction.category_id.is_(None))
+    if tag:
+        q = (q.join(TransactionTag, TransactionTag.transaction_id == Transaction.id)
+             .join(Tag, Tag.id == TransactionTag.tag_id)
+             .filter(Tag.name == tag))
     if not include_transfers:
         pass  # Umbuchungen bleiben sichtbar, sind aber markiert (4.9.1)
     return q
@@ -56,12 +67,13 @@ def list_transactions(account_id: int | None = None, category_id: int | None = N
                       date_from: date | None = None, date_to: date | None = None,
                       text: str | None = None, amount_min: float | None = None,
                       amount_max: float | None = None, unassigned: bool = False,
+                      tag: str | None = None,
                       limit: int = Query(100, le=500), offset: int = 0,
                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     q = _filtered_query(db, user, account_id=account_id, category_id=category_id,
                         date_from=date_from, date_to=date_to, text=text,
                         amount_min=amount_min, amount_max=amount_max,
-                        unassigned=unassigned, include_transfers=True)
+                        unassigned=unassigned, include_transfers=True, tag=tag)
     total = q.count()
     items = (q.order_by(Transaction.booking_date.desc(), Transaction.id.desc())
              .offset(offset).limit(limit).all())
@@ -131,6 +143,62 @@ def delete_transaction(transaction_id: int, user: User = Depends(get_current_use
     db.delete(tx)
     db.commit()
     return {"ok": True}
+
+
+@router.put("/{transaction_id}/splits", response_model=TransactionOut)
+def set_splits(transaction_id: int, splits: list[SplitIn],
+               user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Splitbuchung (4.4): eine Buchung auf mehrere Kategorien aufteilen.
+    Leere Liste entfernt den Split. Teilbeträge müssen den Buchungsbetrag ergeben."""
+    tx = db.get(Transaction, transaction_id)
+    if tx is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Buchung nicht gefunden")
+    require_account_access(db, user, tx.account_id, "editor")
+    if splits:
+        total = sum((s.amount for s in splits), start=tx.amount * 0)
+        if total != tx.amount:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                f"Teilbeträge ({total}) müssen den Buchungsbetrag ({tx.amount}) ergeben")
+        for s in splits:
+            if db.get(Category, s.category_id) is None:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Kategorie {s.category_id} nicht gefunden")
+    db.query(TransactionSplit).filter(TransactionSplit.transaction_id == tx.id).delete()
+    for s in splits:
+        db.add(TransactionSplit(transaction_id=tx.id, category_id=s.category_id, amount=s.amount))
+    log(db, user.id, "transaction", tx.id, "split", {"parts": len(splits)})
+    db.commit()
+    db.refresh(tx)
+    return tx
+
+
+@router.put("/{transaction_id}/tags", response_model=TransactionOut)
+def set_tags(transaction_id: int, tag_names: list[str],
+             user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Tags als leichte Zweitdimension neben Kategorien (4.4), z.B. "Urlaub 2026"."""
+    tx = db.get(Transaction, transaction_id)
+    if tx is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Buchung nicht gefunden")
+    require_account_access(db, user, tx.account_id, "editor")
+    db.query(TransactionTag).filter(TransactionTag.transaction_id == tx.id).delete()
+    for raw in tag_names:
+        name = raw.strip()
+        if not name:
+            continue
+        tag = db.query(Tag).filter(Tag.name == name).first()
+        if tag is None:
+            tag = Tag(name=name)
+            db.add(tag)
+            db.flush()
+        db.add(TransactionTag(transaction_id=tx.id, tag_id=tag.id))
+    log(db, user.id, "transaction", tx.id, "tags", {"tags": tag_names})
+    db.commit()
+    db.refresh(tx)
+    return tx
+
+
+@router.get("/tags", response_model=list[TagOut])
+def list_tags(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return db.query(Tag).order_by(Tag.name).all()
 
 
 @router.get("/export.csv")

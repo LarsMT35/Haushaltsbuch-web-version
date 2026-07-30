@@ -13,12 +13,18 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import accessible_account_ids, get_current_user
-from ..models import Account, Category, Transaction, User
+from ..models import Account, Category, DashboardLayout, Transaction, User
 from ..schemas import (
     AccountBalance,
     CategoryValue,
     DashboardSummary,
+    LayoutOut,
     MonthValue,
+    NetWorthOut,
+    NetWorthSeries,
+    SavingsRateOut,
+    YearComparisonOut,
+    YearComparisonRow,
 )
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -76,11 +82,16 @@ def summary(date_from: date | None = None, date_to: date | None = None,
         else:
             expenses += -t.amount_ref
             monthly_out[month] += -t.amount_ref
-            by_cat[t.category_id] += -t.amount_ref
+            # Splitbuchungen zählen anteilig auf ihre Kategorien (4.4)
+            parts = ([(s.category_id, s.amount) for s in t.splits]
+                     if t.splits else [(t.category_id, t.amount_ref)])
+            for cid, amount in parts:
+                if amount < 0:
+                    by_cat[cid] += -amount
         cat = categories.get(t.category_id) if t.category_id else None
         key = ("income" if t.amount_ref >= 0 else "expenses") + ("_fixed" if cat and cat.is_fixed_cost else "_variable")
         fixed[key] += abs(t.amount_ref)
-        if t.category_id is None:
+        if t.category_id is None and not t.splits:
             unassigned += 1
         if acc and acc.type in SAVINGS_TYPES:
             savings[month] += t.amount_ref
@@ -116,3 +127,136 @@ def summary(date_from: date | None = None, date_to: date | None = None,
         fixed_vs_variable={k: float(v) for k, v in fixed.items()},
         savings_movement=[MonthValue(month=m, value=float(savings[m])) for m in months],
     )
+
+
+def _month_range(date_from: date, date_to: date) -> list[str]:
+    months = []
+    y, m = date_from.year, date_from.month
+    while (y, m) <= (date_to.year, date_to.month):
+        months.append(f"{y:04d}-{m:02d}")
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+    return months
+
+
+@router.get("/networth", response_model=NetWorthOut)
+def networth(date_from: date | None = None, date_to: date | None = None,
+             user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Vermögensverlauf pro Konto als Monatsend-Saldo (4.9) – berechnet aus
+    Anfangssaldo + Buchungen (Prinzip 3)."""
+    if date_to is None:
+        date_to = date.today()
+    if date_from is None:
+        date_from = date_to.replace(day=1).replace(year=date_to.year - 1)
+    months = _month_range(date_from, date_to)
+
+    ids = accessible_account_ids(db, user)
+    accounts = db.query(Account).filter(Account.id.in_(ids), Account.archived.is_(False)).all()
+    series = []
+    totals = [Decimal("0")] * len(months)
+    for a in accounts:
+        txs = (db.query(Transaction.booking_date, Transaction.amount)
+               .filter(Transaction.account_id == a.id)
+               .order_by(Transaction.booking_date.asc())
+               .all())
+        # Saldo vor dem ersten angefragten Monat
+        running = (a.opening_balance or Decimal("0")) + sum(
+            (amt for d, amt in txs if d.strftime("%Y-%m") < months[0]), Decimal("0"))
+        values = []
+        i = 0
+        txs_in_range = [(d.strftime("%Y-%m"), amt) for d, amt in txs if d.strftime("%Y-%m") >= months[0]]
+        for month in months:
+            while i < len(txs_in_range) and txs_in_range[i][0] <= month:
+                running += txs_in_range[i][1]
+                i += 1
+            values.append(running)
+        series.append(NetWorthSeries(account_id=a.id, name=a.name,
+                                     values=[float(v) for v in values]))
+        totals = [t + v for t, v in zip(totals, values)]
+    return NetWorthOut(months=months, series=sorted(series, key=lambda s: s.name),
+                       total=[float(t) for t in totals])
+
+
+@router.get("/savings-rate", response_model=SavingsRateOut)
+def savings_rate(date_from: date | None = None, date_to: date | None = None,
+                 account_id: int | None = None,
+                 user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Sparquote im Zeitverlauf (4.9): Bilanz ÷ Einnahmen je Monat, ohne Umbuchungen."""
+    if date_to is None:
+        date_to = date.today()
+    if date_from is None:
+        date_from = date_to.replace(day=1).replace(year=date_to.year - 1)
+    ids = accessible_account_ids(db, user)
+    filter_ids = [account_id] if account_id is not None and account_id in ids else ids
+    txs = (db.query(Transaction)
+           .filter(Transaction.account_id.in_(filter_ids),
+                   Transaction.booking_date >= date_from,
+                   Transaction.booking_date <= date_to,
+                   Transaction.transfer_id.is_(None))
+           .all())
+    months = _month_range(date_from, date_to)
+    inc = {m: Decimal("0") for m in months}
+    out = {m: Decimal("0") for m in months}
+    for t in txs:
+        m = t.booking_date.strftime("%Y-%m")
+        if m not in inc:
+            continue
+        if t.amount_ref >= 0:
+            inc[m] += t.amount_ref
+        else:
+            out[m] += -t.amount_ref
+    rate = [float((inc[m] - out[m]) / inc[m] * 100) if inc[m] else 0.0 for m in months]
+    return SavingsRateOut(months=months, income=[float(inc[m]) for m in months],
+                          expenses=[float(out[m]) for m in months],
+                          rate=[round(r, 1) for r in rate])
+
+
+@router.get("/year-comparison", response_model=YearComparisonOut)
+def year_comparison(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Jahresvergleich der Ausgaben pro Kategorie (4.9) – möglich durch die
+    durchgehende Historie ohne Jahresschnitt."""
+    ids = accessible_account_ids(db, user)
+    txs = (db.query(Transaction)
+           .filter(Transaction.account_id.in_(ids), Transaction.transfer_id.is_(None))
+           .all())
+    categories = {c.id: c.name for c in db.query(Category).all()}
+    per: dict[tuple[int | None, int], Decimal] = defaultdict(Decimal)
+    years: set[int] = set()
+    for t in txs:
+        year = t.booking_date.year
+        parts = ([(s.category_id, s.amount) for s in t.splits]
+                 if t.splits else [(t.category_id, t.amount_ref)])
+        for cid, amount in parts:
+            if amount >= 0:
+                continue
+            per[(cid, year)] += -amount
+            years.add(year)
+    year_list = sorted(years)
+    cat_ids = {cid for (cid, _y) in per}
+    rows = []
+    for cid in cat_ids:
+        values = [float(per.get((cid, y), Decimal("0"))) for y in year_list]
+        name = "Nicht zugeordnet" if cid is None else categories.get(cid, f"#{cid}")
+        rows.append(YearComparisonRow(category_id=cid, category_name=name, values=values))
+    rows.sort(key=lambda r: -sum(r.values))
+    return YearComparisonOut(years=year_list, rows=rows)
+
+
+@router.get("/layout", response_model=LayoutOut)
+def get_layout(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Kachel-Layout pro Nutzer (4.9.1): Reihenfolge + Sichtbarkeit."""
+    layout = db.get(DashboardLayout, user.id)
+    return LayoutOut(tiles=layout.tiles if layout else [])
+
+
+@router.put("/layout", response_model=LayoutOut)
+def set_layout(payload: LayoutOut, user: User = Depends(get_current_user),
+               db: Session = Depends(get_db)):
+    layout = db.get(DashboardLayout, user.id)
+    if layout is None:
+        layout = DashboardLayout(user_id=user.id, tiles=[])
+        db.add(layout)
+    layout.tiles = [t.model_dump() for t in payload.tiles]
+    db.commit()
+    return payload

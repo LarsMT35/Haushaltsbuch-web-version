@@ -19,8 +19,55 @@ const filter = ref({
   date_from: '',
   date_to: '',
   text: '',
+  tag: '',
   unassigned: route.query.unassigned ? true : false,
 })
+const allTags = ref([])
+
+// v1.1: Detailbereich je Buchung für Splits & Tags
+const openDetail = ref(null)
+const splitRows = ref([])
+const tagInput = ref('')
+
+function toggleDetail(tx) {
+  if (openDetail.value === tx.id) { openDetail.value = null; return }
+  openDetail.value = tx.id
+  splitRows.value = tx.splits.length
+    ? tx.splits.map((s) => ({ category_id: s.category_id, amount: s.amount }))
+    : [{ category_id: tx.category_id || '', amount: tx.amount }]
+  tagInput.value = tx.tags.map((t) => t.name).join(', ')
+}
+
+function splitSum() {
+  return splitRows.value.reduce((s, r) => s + Number(r.amount || 0), 0)
+}
+
+async function saveSplits(tx) {
+  error.value = ''
+  try {
+    const payload = splitRows.value
+      .filter((r) => r.category_id && r.amount)
+      .map((r) => ({ category_id: Number(r.category_id), amount: String(r.amount) }))
+    const updated = await api.put(`/transactions/${tx.id}/splits`, payload)
+    Object.assign(tx, updated)
+  } catch (e) { error.value = e.message }
+}
+
+async function clearSplits(tx) {
+  const updated = await api.put(`/transactions/${tx.id}/splits`, [])
+  Object.assign(tx, updated)
+  splitRows.value = [{ category_id: tx.category_id || '', amount: tx.amount }]
+}
+
+async function saveTags(tx) {
+  error.value = ''
+  try {
+    const names = tagInput.value.split(',').map((s) => s.trim()).filter(Boolean)
+    const updated = await api.put(`/transactions/${tx.id}/tags`, names)
+    Object.assign(tx, updated)
+    allTags.value = await api.get('/transactions/tags')
+  } catch (e) { error.value = e.message }
+}
 
 const manual = ref({ account_id: '', booking_date: new Date().toISOString().slice(0, 10),
                      amount: '', counterparty: '', purpose: '', category_id: null })
@@ -35,6 +82,7 @@ async function load() {
 
 onMounted(async () => {
   categories.value = await api.get('/categories')
+  allTags.value = await api.get('/transactions/tags')
   await load()
 })
 watch(filter, () => { offset.value = 0; load() }, { deep: true })
@@ -140,6 +188,10 @@ function doExport() {
       <input type="date" v-model="filter.date_from" />
       <input type="date" v-model="filter.date_to" />
       <input v-model.lazy="filter.text" placeholder="Suche…" />
+      <select v-model="filter.tag">
+        <option value="">Alle Tags</option>
+        <option v-for="t in allTags" :key="t.id" :value="t.name">🏷 {{ t.name }}</option>
+      </select>
       <label style="align-self: center"><input type="checkbox" v-model="filter.unassigned" /> nur ohne Kategorie</label>
     </div>
 
@@ -161,27 +213,62 @@ function doExport() {
         <tr><th>Datum</th><th>Konto</th><th>Gegenpartei / Zweck</th><th>Kategorie</th><th class="num">Betrag</th><th></th></tr>
       </thead>
       <tbody>
-        <tr v-for="t in page.items" :key="t.id" :class="t.transfer_id ? 'transfer' : ''">
+        <template v-for="t in page.items" :key="t.id">
+        <tr :class="t.transfer_id ? 'transfer' : ''">
           <td>{{ fmtDate(t.booking_date) }}</td>
           <td>{{ accounts.find((a) => a.id === t.account_id)?.name }}</td>
           <td>
             <strong>{{ t.counterparty }}</strong>
             <span v-if="t.is_manual" class="badge gray">manuell</span>
             <span v-if="t.transfer_id" class="badge gray">Umbuchung</span>
+            <span v-if="t.splits.length" class="badge">Split ({{ t.splits.length }})</span>
+            <span v-for="tag in t.tags" :key="tag.id" class="badge gray">🏷 {{ tag.name }}</span>
             <br /><span class="hint">{{ t.purpose }}</span>
           </td>
           <td>
             <!-- auffälliger Zuordnen-Hinweis statt stillem Verschwinden (4.9.1) -->
-            <span v-if="!t.category_id && !t.transfer_id" class="badge warn">zuordnen ↓</span>
-            <select :value="t.category_id ?? ''" @change="setCategory(t, $event.target.value)">
-              <option value="">– keine –</option>
-              <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
-            </select>
-            <button v-if="t.category_id" title="Regel: künftig immer so" @click="makeRule(t)">↻ Regel</button>
+            <span v-if="!t.category_id && !t.splits.length && !t.transfer_id" class="badge warn">zuordnen ↓</span>
+            <template v-if="!t.splits.length">
+              <select :value="t.category_id ?? ''" @change="setCategory(t, $event.target.value)">
+                <option value="">– keine –</option>
+                <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+              </select>
+              <button v-if="t.category_id" title="Regel: künftig immer so" @click="makeRule(t)">↻ Regel</button>
+            </template>
+            <span v-else class="hint">aufgeteilt</span>
           </td>
           <td class="num" :class="t.transfer_id ? '' : t.amount < 0 ? 'neg' : 'pos'">{{ fmtAmount(t.amount) }}</td>
-          <td><button v-if="t.transfer_id" class="hint" @click="unlink(t)" title="Umbuchung auflösen">✕</button></td>
+          <td style="white-space: nowrap">
+            <button @click="toggleDetail(t)" title="Split & Tags">{{ openDetail === t.id ? '▴' : '▾' }}</button>
+            <button v-if="t.transfer_id" class="hint" @click="unlink(t)" title="Umbuchung auflösen">✕</button>
+          </td>
         </tr>
+        <!-- v1.1: Splitbuchung & Tags (4.4) -->
+        <tr v-if="openDetail === t.id">
+          <td colspan="6" style="background: var(--bg)">
+            <div class="form-row" style="margin-bottom: .25rem">
+              <strong>Split:</strong>
+              <template v-for="(row, i) in splitRows" :key="i">
+                <select v-model="row.category_id">
+                  <option value="" disabled>Kategorie…</option>
+                  <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+                </select>
+                <input type="number" step="0.01" v-model="row.amount" style="width: 6.5rem" />
+              </template>
+              <button @click="splitRows.push({ category_id: '', amount: '' })">+ Teil</button>
+              <span class="hint" :class="Math.abs(splitSum() - Number(t.amount)) > 0.004 ? 'error' : ''">
+                Summe {{ splitSum().toFixed(2) }} / {{ t.amount }}</span>
+              <button class="primary" @click="saveSplits(t)">Split speichern</button>
+              <button v-if="t.splits.length" @click="clearSplits(t)">Split entfernen</button>
+            </div>
+            <div class="form-row" style="margin-bottom: 0">
+              <strong>Tags:</strong>
+              <input v-model="tagInput" placeholder="z.B. Urlaub Norwegen 2026, Umzug" style="min-width: 20rem" />
+              <button class="primary" @click="saveTags(t)">Tags speichern</button>
+            </div>
+          </td>
+        </tr>
+        </template>
       </tbody>
     </table>
     <div class="topbar" style="margin-top: .75rem">

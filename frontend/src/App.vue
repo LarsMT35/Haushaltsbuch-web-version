@@ -55,6 +55,7 @@ const shared = computed(() => accounts.value.filter((a) => a.shared))
         <router-link to="/">Dashboard</router-link>
         <router-link to="/buchungen">Buchungen</router-link>
         <router-link to="/import">Import</router-link>
+        <router-link to="/budgets">Budgets</router-link>
         <router-link to="/kategorien">Kategorien</router-link>
         <router-link to="/regeln">Regeln</router-link>
       </nav>

@@ -184,6 +184,7 @@ class Transaction(Base):
     category: Mapped[Category | None] = relationship()
     account: Mapped[Account] = relationship()
     splits: Mapped[list["TransactionSplit"]] = relationship(back_populates="transaction", cascade="all, delete-orphan")
+    tags: Mapped[list["Tag"]] = relationship(secondary="transaction_tags")
 
 
 class TransactionSplit(Base):
@@ -289,6 +290,17 @@ class ExchangeRate(Base):
     currency_to: Mapped[str] = mapped_column(String(3))
     rate_date: Mapped[date] = mapped_column(Date)
     rate: Mapped[Decimal] = mapped_column(Numeric(16, 6))
+
+
+# ------------------------------------------------------------- Konfiguration
+
+class AppSetting(Base):
+    """App-weite Konfiguration als Daten (Prinzip 1), z.B. Budget-Schwellwerte."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 # --------------------------------------------------------------------- Audit
