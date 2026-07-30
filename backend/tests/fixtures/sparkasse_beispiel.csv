@@ -1,0 +1,6 @@
+"Auftragskonto";"Buchungstag";"Valutadatum";"Buchungstext";"Verwendungszweck";"Glaeubiger ID";"Mandatsreferenz";"Kundenreferenz (End-to-End)";"Sammlerreferenz";"Lastschrift Ursprungsbetrag";"Auslagenersatz Ruecklastschrift";"Beguenstigter/Zahlungspflichtiger";"Kontonummer/IBAN";"BIC (SWIFT-Code)";"Betrag";"Waehrung";"Info"
+"DE12500105170648489890";"24.07.26";"24.07.26";"KARTENZAHLUNG";"ALDI SAGT DANKE 2026-07-23";"";"";"";"";"";"";"ALDI SUED";"DE98765432109876543210";"XXXXDE11";"-22,98";"EUR";"Umsatz gebucht"
+"DE12500105170648489890";"22.07.26";"22.07.26";"LASTSCHRIFT";"Miete Juli 2026";"DE98ZZZ09999999999";"M-2026-07";"";"";"";"";"Hausverwaltung Muster GmbH";"DE11222233334444555566";"XXXXDE22";"-850,00";"EUR";"Umsatz gebucht"
+"DE12500105170648489890";"15.07.26";"15.07.26";"GUTSCHRIFT";"GEHALT 07/2026";"";"";"";"";"";"";"Arbeitgeber AG";"DE55666677778888999900";"XXXXDE33";"2.450,00";"EUR";"Umsatz gebucht"
+"DE12500105170648489890";"10.07.26";"10.07.26";"UEBERWEISUNG";"Uebertrag Tagesgeld";"";"";"";"";"";"";"Max Mustermann";"DE44111122223333444455";"XXXXDE44";"-300,00";"EUR";"Umsatz gebucht"
+"DE12500105170648489890";"03.01.25";"03.01.25";"KARTENZAHLUNG";"REWE MARKT GMBH";"";"";"";"";"";"";"REWE";"DE98765432109876543219";"XXXXDE55";"-54,37";"EUR";"Umsatz gebucht"

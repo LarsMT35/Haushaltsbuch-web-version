@@ -1,0 +1,16 @@
+Umsatzanzeige;Datei erstellt am: 25.07.2026 10:12
+;Letztes Update: aktuell
+
+IBAN;DE44 1111 2222 3333 4444 55
+Kontoname;Extra-Konto
+Bank;ING
+Kunde;Max Mustermann
+Zeitraum;01.01.2026 - 25.07.2026
+Saldo;5.300,00;EUR
+
+In der CSV-Datei finden Sie alle bereits gebuchten Umsätze. Die vorgemerkten Umsätze werden nicht aufgenommen, auch wenn sie in Ihrem Internetbanking angezeigt werden.
+
+Buchung;Valuta;Auftraggeber/Empfänger;Buchungstext;Verwendungszweck;Saldo;Währung;Betrag;Währung
+11.07.2026;11.07.2026;Max Mustermann;Gutschrift;Uebertrag Tagesgeld;5.300,00;EUR;300,00;EUR
+01.07.2026;01.07.2026;Arbeitgeber AG;Gehalt/Rente;VWL Juli;5.000,00;EUR;40,00;EUR
+15.03.2026;15.03.2026;Müller Drogeriemarkt;Lastschrift;Einkauf Müller;4.960,00;EUR;-13,45;EUR
