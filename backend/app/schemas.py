@@ -215,6 +215,7 @@ class TransactionOut(ORMModel):
     import_batch_id: int | None
     is_manual: bool
     transfer_id: int | None
+    bank_balance: Decimal | None
     splits: list[SplitOut] = []
     tags: list[TagOut] = []
 
@@ -298,6 +299,7 @@ class ParsedRow(BaseModel):
     purpose: str
     booking_text: str
     account_iban: str
+    balance: Decimal | None = None
     raw_line: str
     dedup_hash: str
     duplicate: str = "new"  # new | suspect | duplicate
@@ -454,3 +456,124 @@ class LayoutTile(BaseModel):
 
 class LayoutOut(BaseModel):
     tiles: list[LayoutTile]
+
+
+# ------------------------------------------------- Wiederkehrende Kosten (4.7 b)
+
+class RecurringItemOut(ORMModel):
+    id: int
+    name: str
+    cycle_months: int
+    expected_amount: Decimal
+    paying_account_id: int | None
+    category_id: int | None
+    match_text: str
+    reimbursement_account_id: int | None
+    reimbursement_match_text: str
+    current_rate: Decimal | None
+    prefinance_note: str
+    active: bool
+
+
+class RecurringItemCreate(BaseModel):
+    name: str
+    cycle_months: int = 12
+    expected_amount: Decimal = Decimal("0")
+    paying_account_id: int | None = None
+    category_id: int | None = None
+    match_text: str = ""
+    reimbursement_account_id: int | None = None
+    reimbursement_match_text: str = ""
+    current_rate: Decimal | None = None
+    prefinance_note: str = ""
+
+
+class RecurringItemUpdate(BaseModel):
+    name: str | None = None
+    cycle_months: int | None = None
+    expected_amount: Decimal | None = None
+    paying_account_id: int | None = None
+    category_id: int | None = None
+    match_text: str | None = None
+    reimbursement_account_id: int | None = None
+    reimbursement_match_text: str | None = None
+    current_rate: Decimal | None = None
+    prefinance_note: str | None = None
+    active: bool | None = None
+
+
+class RecurringLinkOut(ORMModel):
+    id: int
+    recurring_item_id: int
+    transaction_id: int
+    role: str
+    is_auto: bool
+    transaction: TransactionOut
+
+
+class RecurringLinkIn(BaseModel):
+    transaction_id: int
+    role: str  # charge | reimbursement
+
+
+class RecurringStatusRow(BaseModel):
+    """Soll/Ist-Status einer wiederkehrenden Kostenposition (4.7 b, 4.9).
+
+    Bei vorfinanzierten Positionen: Soll = aufsummierte Erstattungen seit der
+    letzten Abbuchung, Ist = tatsächliche neue Abbuchung. Ampel schlägt bei
+    größerer Abweichung Alarm, damit die Rate rechtzeitig angepasst wird.
+    """
+
+    id: int
+    name: str
+    cycle_months: int
+    expected_amount: float
+    is_prefinanced: bool
+    last_charge_date: date | None
+    last_charge_amount: float | None
+    next_due_estimate: date | None
+    soll: float | None  # nur bei Vorfinanzierung
+    ist: float | None
+    deviation: float | None  # ist - soll
+    suggested_rate: float | None  # letzte Abbuchung ÷ Zyklusmonate
+    ampel: str  # gruen | gelb | rot
+
+
+class RecurringStatusOut(BaseModel):
+    rows: list[RecurringStatusRow]
+
+
+class RecurringDetectResult(BaseModel):
+    charges_linked: int
+    reimbursements_linked: int
+
+
+# ------------------------------------------------------- Saldo-Abgleich (4.2)
+
+class BalanceCheckRow(BaseModel):
+    transaction_id: int
+    booking_date: date
+    counterparty: str
+    computed_balance: float
+    bank_balance: float
+    deviation: float
+
+
+class BalanceCheckOut(BaseModel):
+    account_id: int
+    checked_count: int
+    rows: list[BalanceCheckRow]  # nur Abweichungen oberhalb der Toleranz
+
+
+# ------------------------------------------ Einzahlungstransparenz (4.9)
+
+class DepositorMonth(BaseModel):
+    month: str
+    values: dict[str, float]  # Gegenpartei -> Summe
+
+
+class DepositsOut(BaseModel):
+    account_id: int
+    months: list[str]
+    depositors: list[str]
+    series: list[DepositorMonth]

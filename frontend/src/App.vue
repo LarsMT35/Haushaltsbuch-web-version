@@ -58,6 +58,7 @@ const shared = computed(() => accounts.value.filter((a) => a.shared))
         <router-link to="/budgets">Budgets</router-link>
         <router-link to="/kategorien">Kategorien</router-link>
         <router-link to="/regeln">Regeln</router-link>
+        <router-link to="/wiederkehrend">Wiederkehrend</router-link>
       </nav>
       <!-- Kontenliste dauerhaft sichtbar, persönlich/gemeinsam getrennt (4.9.1) -->
       <h2 style="color: var(--muted); font-size: .8rem; text-transform: uppercase">Meine Konten</h2>

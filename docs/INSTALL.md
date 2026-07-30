@@ -102,8 +102,18 @@ Schema-Migrationen laufen bei jedem Start automatisch (`alembic upgrade head`).
 7. **Budgets** (*Budgets*): monatliches Budget je Kategorie anlegen – die
    Ampel (grün/gelb/rot) zeigt die Ausschöpfung, Schwellwerte sind als Admin
    konfigurierbar.
-8. **Altbestand einspielen**: alte Jahres-CSV-Exporte der Banken über denselben
-   Import-Weg laden (Banken halten Umsätze oft nur begrenzt vor – früh sichern!).
+8. **Wiederkehrende Kostenpositionen** (*Wiederkehrend*): ADAC, Rundfunkbeitrag,
+   Abos usw. anlegen (Erkennungstext für die Abbuchung genügt meist) und über
+   „Erkennung ausführen" mit bestehenden Buchungen verknüpfen lassen. Wird ein
+   Teil monatlich über ein anderes Konto vorfinanziert (z.B. gemeinsames
+   Konto), zusätzlich das Vorfinanzierungskonto samt Erkennungstext für die
+   Erstattungsbuchungen eintragen – die Ampel-Übersicht zeigt dann Soll gegen
+   Ist und schlägt bei Abweichung eine neue Monatsrate vor.
+9. **Saldo-Abgleich** (*Einstellungen*): für Konten, deren Bank einen
+   laufenden Saldo mitliefert (z.B. ING), lässt sich der berechnete gegen den
+   gemeldeten Kontostand prüfen – deckt fehlende Importe oder Lücken auf.
+10. **Altbestand einspielen**: alte Jahres-CSV-Exporte der Banken über denselben
+    Import-Weg laden (Banken halten Umsätze oft nur begrenzt vor – früh sichern!).
 
 ---
 

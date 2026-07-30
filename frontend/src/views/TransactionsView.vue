@@ -261,11 +261,14 @@ function doExport() {
               <button class="primary" @click="saveSplits(t)">Split speichern</button>
               <button v-if="t.splits.length" @click="clearSplits(t)">Split entfernen</button>
             </div>
-            <div class="form-row" style="margin-bottom: 0">
+            <div class="form-row" style="margin-bottom: .25rem">
               <strong>Tags:</strong>
               <input v-model="tagInput" placeholder="z.B. Urlaub Norwegen 2026, Umzug" style="min-width: 20rem" />
               <button class="primary" @click="saveTags(t)">Tags speichern</button>
             </div>
+            <p class="hint" style="margin: 0">
+              Buchungs-ID {{ t.id }} – z.B. für manuelles Verknüpfen bei
+              <router-link to="/wiederkehrend">Wiederkehrende Kostenpositionen</router-link>.</p>
           </td>
         </tr>
         </template>

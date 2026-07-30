@@ -145,7 +145,7 @@ def commit(payload: ImportCommitIn, user: User = Depends(get_current_user),
             counterparty=row.counterparty, counterparty_iban=row.counterparty_iban,
             purpose=row.purpose, booking_text=row.booking_text,
             category_id=row.suggested_category_id, import_batch_id=batch.id,
-            raw_line=row.raw_line, dedup_hash=row.dedup_hash,
+            raw_line=row.raw_line, dedup_hash=row.dedup_hash, bank_balance=row.balance,
         ))
         count += 1
     batch.num_transactions = count

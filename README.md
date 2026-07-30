@@ -102,14 +102,35 @@ automatisch aus.
 - ✅ Design-Einstellungen (Farbschemata + Dark Mode, seit v1.0)
 - ✅ Rückwirkende Regelanwendung (seit v1.0)
 
-Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch RecurringItems
-und ExchangeRates für v1.2/v2 – kein späterer Datenumbau nötig).
+### v1.2 – Haushalts-Logik
 
-### Noch offen (nächste Stufen)
+- ✅ **Wiederkehrende Kostenpositionen** (4.7 b): Name, Zyklus, erwarteter
+  Betrag, Erkennungstext für die Abbuchung; der Zahler ergibt sich automatisch
+  aus dem Konto der erkannten Buchung. Automatische Erkennung per „Erkennung
+  ausführen“, Verknüpfung jederzeit auch manuell setz- und lösbar.
+- ✅ **Vorfinanzierungs-Abgleich**: für Positionen mit hinterlegtem
+  Vorfinanzierungskonto vergleicht die App **Soll** (aufsummierte Erstattungen
+  seit der letzten Abbuchung) gegen **Ist** (tatsächliche neue Abbuchung),
+  zeigt die Abweichung mit Ampel und schlägt eine neue Monatsrate vor
+  (letzte Abbuchung ÷ Zyklusmonate) – mit einem Klick übernehmbar.
+- ✅ **Ampel-Übersicht** aller wiederkehrenden Positionen (Soll/Ist, nächste
+  Fälligkeit) als eigene Seite und als Dashboard-Kachel
+- ✅ **Saldo-Abgleich gegen Bank**: wo eine Bank einen laufenden Saldo je
+  Buchung mitliefert (ING; Sparkasse liefert keinen), vergleicht die App den
+  berechneten mit dem gemeldeten Kontostand und zeigt Abweichungen – erkennt
+  fehlende Importe oder Lücken (*Einstellungen → Saldo-Abgleich*)
+- ✅ **Einzahlungstransparenz gemeinsames Konto**: Einzahlungen je Monat nach
+  Einzahler gruppiert (aus dem Gegenpartei-Feld des Bank-Exports), als
+  gestapeltes Balkendiagramm im Dashboard
 
-- **v1.2**: wiederkehrende Kostenpositionen, Vorfinanzierungs-Abgleich,
-  Saldo-Abgleich gegen Bank-Saldo
-- **v2**: Mehrwährung mit EZB-Kursabruf (Modell vorhanden), Belege, Prognosen
+Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
+für v2 – kein späterer Datenumbau nötig).
+
+### Noch offen (nächste Stufe)
+
+- **v2**: Mehrwährung mit EZB-Kursabruf (Modell vorhanden), Belege/Anhänge,
+  Prognose kommender Fixkosten, Sparziele, Zugriff von unterwegs, native
+  Mobile-Ansicht
 
 ## Projektstruktur
 
@@ -117,16 +138,19 @@ und ExchangeRates für v1.2/v2 – kein späterer Datenumbau nötig).
 backend/
   app/
     api/          # /api/v1-Router (auth, users, accounts, categories, rules,
-                  #  transactions, imports, transfers, dashboard)
+                  #  transactions, imports, transfers, dashboard, budgets,
+                  #  recurring)
     services/     # csv_import (Parser + Mapping-Assistent), rules_engine,
-                  #  transfers (Umbuchungserkennung), audit
+                  #  transfers (Umbuchungserkennung), recurring
+                  #  (Vorfinanzierungs-Abgleich), audit
     models.py     # Datenmodell Kapitel 6
     seed.py       # Admin, Basis-Kategorien, Sparkasse-/ING-Profile
   alembic/        # Migrationen (Prinzip 4)
-  tests/          # Parser-Regressionstests mit Beispieldateien + API-Flow
+  tests/          # Parser-Regressionstests mit Beispieldateien + API-Flow +
+                  #  v1.1/v1.2
 frontend/
   src/views/      # Dashboard, Buchungen, Import, Budgets, Kategorien, Regeln,
-                  #  Einstellungen
+                  #  Wiederkehrend, Einstellungen
 proxmox/          # LXC-Installer im Community-Skript-Stil
 scripts/          # backup.sh / restore.sh / update.sh
 docs/             # Anforderungsdokument + Installationsanleitung

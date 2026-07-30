@@ -12,12 +12,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..deps import accessible_account_ids, get_current_user
+from ..deps import accessible_account_ids, get_current_user, require_account_access
 from ..models import Account, Category, DashboardLayout, Transaction, User
 from ..schemas import (
     AccountBalance,
     CategoryValue,
     DashboardSummary,
+    DepositorMonth,
+    DepositsOut,
     LayoutOut,
     MonthValue,
     NetWorthOut,
@@ -241,6 +243,43 @@ def year_comparison(user: User = Depends(get_current_user), db: Session = Depend
         rows.append(YearComparisonRow(category_id=cid, category_name=name, values=values))
     rows.sort(key=lambda r: -sum(r.values))
     return YearComparisonOut(years=year_list, rows=rows)
+
+
+@router.get("/deposits", response_model=DepositsOut)
+def deposits(account_id: int, date_from: date | None = None, date_to: date | None = None,
+             user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Einzahlungs-Transparenz fürs gemeinsame Konto (4.9): eingehende
+    Buchungen (keine Umbuchungen) je Monat nach Gegenpartei gruppiert – auf
+    Bank-Exports ist das direkt der Auftraggeber/Einzahler."""
+    require_account_access(db, user, account_id, "reader")
+    if date_to is None:
+        date_to = date.today()
+    if date_from is None:
+        date_from = date_to.replace(day=1).replace(year=date_to.year - 1)
+    months = _month_range(date_from, date_to)
+
+    txs = (db.query(Transaction)
+           .filter(Transaction.account_id == account_id,
+                   Transaction.booking_date >= date_from,
+                   Transaction.booking_date <= date_to,
+                   Transaction.transfer_id.is_(None),
+                   Transaction.amount > 0)
+           .all())
+
+    per_month: dict[str, dict[str, Decimal]] = {m: defaultdict(Decimal) for m in months}
+    depositors: set[str] = set()
+    for t in txs:
+        m = t.booking_date.strftime("%Y-%m")
+        if m not in per_month:
+            continue
+        name = t.counterparty.strip() or "Unbekannt"
+        per_month[m][name] += t.amount_ref
+        depositors.add(name)
+
+    series = [DepositorMonth(month=m, values={d: float(per_month[m].get(d, Decimal("0"))) for d in depositors})
+              for m in months]
+    return DepositsOut(account_id=account_id, months=months,
+                       depositors=sorted(depositors), series=series)
 
 
 @router.get("/layout", response_model=LayoutOut)

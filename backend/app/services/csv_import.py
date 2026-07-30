@@ -132,6 +132,7 @@ def parse_csv(data: bytes, profile: BankProfile) -> dict:
             "purpose": cell(row, "purpose"),
             "booking_text": cell(row, "booking_text"),
             "account_iban": cell(row, "account_iban").replace(" ", ""),
+            "balance": None,  # Bank-Saldo nach dieser Buchung, falls geliefert (Saldo-Abgleich 4.2)
             "raw_line": raw,
             "dedup_hash": "",
             "error": "",
@@ -151,6 +152,13 @@ def parse_csv(data: bytes, profile: BankProfile) -> dict:
             out["amount"] = amount
             out["dedup_hash"] = dedup_hash(out["booking_date"], amount,
                                            out["counterparty_iban"], out["purpose"])
+            bal = cell(row, "balance")
+            if bal:
+                try:
+                    out["balance"] = parse_amount(bal, profile.decimal_separator,
+                                                  profile.thousands_separator)
+                except (InvalidOperation, ValueError):
+                    pass
         except (ValueError, InvalidOperation, IndexError) as exc:
             out["error"] = str(exc)
         if out["account_iban"]:

@@ -6,6 +6,7 @@ import CategoriesView from './views/CategoriesView.vue'
 import DashboardView from './views/DashboardView.vue'
 import ImportView from './views/ImportView.vue'
 import LoginView from './views/LoginView.vue'
+import RecurringView from './views/RecurringView.vue'
 import RulesView from './views/RulesView.vue'
 import SettingsView from './views/SettingsView.vue'
 import TransactionsView from './views/TransactionsView.vue'
@@ -20,6 +21,7 @@ export const router = createRouter({
     { path: '/budgets', component: BudgetsView },
     { path: '/kategorien', component: CategoriesView },
     { path: '/regeln', component: RulesView },
+    { path: '/wiederkehrend', component: RecurringView },
     { path: '/einstellungen', component: SettingsView },
   ],
 })

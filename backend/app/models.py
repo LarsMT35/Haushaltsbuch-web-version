@@ -179,6 +179,9 @@ class Transaction(Base):
     dedup_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
     is_manual: Mapped[bool] = mapped_column(Boolean, default=False)
     transfer_id: Mapped[int | None] = mapped_column(ForeignKey("transfers.id"), nullable=True, index=True)
+    # Von der Bank mitgelieferter Saldo NACH dieser Buchung, falls vorhanden
+    # (z.B. ING) – Grundlage für den Saldo-Abgleich (4.2)
+    bank_balance: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     category: Mapped[Category | None] = relationship()
@@ -269,6 +272,12 @@ class Budget(Base):
 
 
 class RecurringItem(Base):
+    """Wiederkehrende Kostenposition (4.7 b), z.B. ADAC, Rundfunkbeitrag, Netflix.
+
+    Der Zahler ergibt sich automatisch aus dem zahlenden Konto der erkannten
+    Abbuchung – keine manuelle "wer zahlt was"-Liste (4.7 b).
+    """
+
     __tablename__ = "recurring_items"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -277,8 +286,38 @@ class RecurringItem(Base):
     expected_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
     paying_account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"), nullable=True)
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
+    # Text zur automatischen Erkennung der Abbuchung (Gegenpartei/Zweck), analog Rule (4.6)
+    match_text: Mapped[str] = mapped_column(String(255), default="")
+    # Vorfinanzierung (4.7 b): monatliche Erstattung über ein (i.d.R. gemeinsames)
+    # Konto, das die eigentliche Abbuchung vorstreckt. Beides optional – ohne
+    # reimbursement_account_id ist die Position nicht vorfinanziert.
+    reimbursement_account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"), nullable=True)
+    reimbursement_match_text: Mapped[str] = mapped_column(String(255), default="")
+    current_rate: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     prefinance_note: Mapped[str] = mapped_column(Text, default="")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class RecurringLink(Base):
+    """Verknüpft eine Buchung mit einer wiederkehrenden Kostenposition.
+
+    role="charge": die eigentliche Abbuchung; role="reimbursement": eine
+    monatliche Erstattung im Rahmen der Vorfinanzierung (4.7 b). Verknüpfung
+    ist von Anfang an auch manuell setzbar, damit sie nicht an der
+    Erkennungs-Automatik hängt (Machbarkeitshinweis 4.7).
+    """
+
+    __tablename__ = "recurring_links"
+    __table_args__ = (UniqueConstraint("transaction_id", "role"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    recurring_item_id: Mapped[int] = mapped_column(ForeignKey("recurring_items.id"), index=True)
+    transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id"), index=True)
+    role: Mapped[str] = mapped_column(String(16))  # charge | reimbursement
+    is_auto: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    transaction: Mapped[Transaction] = relationship()
 
 
 class ExchangeRate(Base):

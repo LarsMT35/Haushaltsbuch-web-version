@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import account_role, accessible_account_ids, get_current_user, require_account_access
 from ..models import Account, AccountRole, Transaction, User
-from ..schemas import AccountCreate, AccountOut, AccountUpdate, RoleAssign
+from ..schemas import AccountCreate, AccountOut, AccountUpdate, BalanceCheckOut, BalanceCheckRow, RoleAssign
 from ..services.audit import log
+
+BALANCE_TOLERANCE = Decimal("0.01")
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -116,3 +118,38 @@ def assign_role(account_id: int, payload: RoleAssign,
     db.commit()
     return [RoleAssign(user_id=r.user_id, role=r.role)
             for r in db.query(AccountRole).filter(AccountRole.account_id == account_id).all()]
+
+
+@router.get("/{account_id}/balance-check", response_model=BalanceCheckOut)
+def balance_check(account_id: int, user: User = Depends(get_current_user),
+                  db: Session = Depends(get_db)):
+    """Saldo-Abgleich gegen die Bank (4.2): wo eine Bank einen laufenden Saldo
+    mitliefert (z.B. ING), wird der berechnete Saldo dagegen geprüft.
+    Abweichungen erkennen fehlende Importe oder Lücken.
+
+    Hinweis: Die Reihenfolge mehrerer Buchungen am selben Tag ist aus dem
+    CSV-Export nicht immer eindeutig rekonstruierbar; das beeinflusst höchstens
+    einzelne Tages-Zwischenstände, nicht die für die Lückenerkennung
+    entscheidende kumulierte Abweichung.
+    """
+    account = require_account_access(db, user, account_id, "reader")
+    txs = (db.query(Transaction)
+           .filter(Transaction.account_id == account_id)
+           .order_by(Transaction.booking_date.asc(), Transaction.id.asc())
+           .all())
+
+    running = account.opening_balance or Decimal("0")
+    rows = []
+    checked = 0
+    for tx in txs:
+        running += tx.amount
+        if tx.bank_balance is None:
+            continue
+        checked += 1
+        deviation = running - tx.bank_balance
+        if abs(deviation) > BALANCE_TOLERANCE:
+            rows.append(BalanceCheckRow(
+                transaction_id=tx.id, booking_date=tx.booking_date,
+                counterparty=tx.counterparty, computed_balance=float(running),
+                bank_balance=float(tx.bank_balance), deviation=float(deviation)))
+    return BalanceCheckOut(account_id=account_id, checked_count=checked, rows=rows)

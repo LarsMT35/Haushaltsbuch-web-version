@@ -8,6 +8,8 @@ const summary = ref(null)
 const networth = ref(null)
 const savingsRate = ref(null)
 const yearComp = ref(null)
+const recurringStatus = ref(null)
+const deposits = ref(null)
 const categories = ref([])
 // Filter-Chips: eine Auswahl filtert alle Kacheln gleichzeitig (4.9.1)
 const filter = ref({ account_id: '', category_id: '', date_from: '', date_to: '' })
@@ -21,6 +23,7 @@ const TILES = [
   ['savings', 'Bewegung Sparkonten'], ['top', 'Top-Ausgaben'],
   ['networth', 'Vermögensverlauf'], ['savings_rate', 'Sparquote'],
   ['year_comparison', 'Jahresvergleich'],
+  ['recurring_ampel', 'Wiederkehrende Kosten (Ampel)'], ['deposits', 'Einzahlungen gemeinsames Konto'],
 ]
 const layout = ref(TILES.map(([id]) => ({ id, visible: true })))
 const dragId = ref(null)
@@ -33,25 +36,39 @@ function normalizeLayout(stored) {
   return result
 }
 
+// Einzahlungstransparenz braucht ein konkretes gemeinsames Konto (4.9)
+const depositAccountId = ref('')
+const sharedAccounts = computed(() => accounts.value.filter((a) => a.shared))
+
+async function loadDeposits() {
+  if (!depositAccountId.value) { deposits.value = null; return }
+  const range = { date_from: filter.value.date_from, date_to: filter.value.date_to }
+  deposits.value = await api.get('/dashboard/deposits', { ...range, account_id: depositAccountId.value })
+}
+
 async function load() {
   const params = {}
   for (const [k, v] of Object.entries(filter.value)) if (v) params[k] = v
   const range = { date_from: params.date_from, date_to: params.date_to }
-  ;[summary.value, networth.value, savingsRate.value, yearComp.value] = await Promise.all([
+  ;[summary.value, networth.value, savingsRate.value, yearComp.value, recurringStatus.value] = await Promise.all([
     api.get('/dashboard/summary', params),
     api.get('/dashboard/networth', range),
     api.get('/dashboard/savings-rate', { ...range, account_id: params.account_id }),
     api.get('/dashboard/year-comparison'),
+    api.get('/recurring-items/status').then((r) => r.rows),
   ])
+  await loadDeposits()
 }
 
 onMounted(async () => {
   categories.value = await api.get('/categories')
   const saved = await api.get('/dashboard/layout')
   layout.value = normalizeLayout(saved.tiles)
+  if (sharedAccounts.value.length) depositAccountId.value = sharedAccounts.value[0].id
   await load()
 })
 watch(filter, load, { deep: true })
+watch(depositAccountId, loadDeposits)
 
 const orderOf = (id) => layout.value.findIndex((t) => t.id === id)
 const isVisible = (id) => layout.value.find((t) => t.id === id)?.visible !== false
@@ -241,6 +258,43 @@ const palette = ['#2563eb', '#0f766e', '#b45309', '#7c3aed', '#be185d', '#0369a1
             </tbody>
           </table>
         </div>
+      </div>
+
+      <!-- v1.2: Ampel-Übersicht wiederkehrende Kostenpositionen (4.7 b, 4.9) -->
+      <div v-if="isVisible('recurring_ampel') && recurringStatus" class="tile wide" v-bind="tileProps('recurring_ampel')">
+        <button class="tile-close" @click="hide('recurring_ampel')">✕</button>
+        <h3>Wiederkehrende Kosten – Soll/Ist</h3>
+        <table v-if="recurringStatus.length">
+          <tbody>
+            <tr v-for="row in recurringStatus.slice(0, 8)" :key="row.id">
+              <td><span class="ampel" :class="row.ampel"></span></td>
+              <td>{{ row.name }}</td>
+              <td class="hint">fällig ca. {{ row.next_due_estimate || '–' }}</td>
+              <td class="num">{{ row.last_charge_amount != null ? fmtAmount(row.last_charge_amount) : '–' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="hint">Noch keine wiederkehrenden Positionen angelegt.
+          <router-link to="/wiederkehrend">Jetzt anlegen</router-link></p>
+        <router-link class="btn" style="margin-top: .5rem; display: inline-block" to="/wiederkehrend">Details →</router-link>
+      </div>
+
+      <!-- v1.2: Einzahlungstransparenz gemeinsames Konto (4.9) -->
+      <div v-if="isVisible('deposits')" class="tile wide" v-bind="tileProps('deposits')">
+        <button class="tile-close" @click="hide('deposits')">✕</button>
+        <h3>Einzahlungen pro Person (gemeinsames Konto)</h3>
+        <div v-if="sharedAccounts.length">
+          <select v-model="depositAccountId" style="margin-bottom: .5rem">
+            <option v-for="a in sharedAccounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+          </select>
+          <ChartCanvas v-if="deposits" type="bar"
+            :labels="deposits.months"
+            :datasets="deposits.depositors.map((d, i) => ({ label: d,
+              data: deposits.series.map((s) => s.values[d] || 0),
+              backgroundColor: palette[i % palette.length] }))"
+            :options="{ scales: { x: { stacked: true }, y: { stacked: true } } }" />
+        </div>
+        <p v-else class="hint">Kein gemeinsames Konto vorhanden.</p>
       </div>
     </div>
   </div>

@@ -1,6 +1,6 @@
 <script setup>
 import { inject, onMounted, ref } from 'vue'
-import { api } from '../api.js'
+import { api, fmtAmount, fmtDate } from '../api.js'
 
 const user = inject('user')
 const settings = inject('settings')
@@ -19,9 +19,23 @@ const roleForm = ref({ account_id: '', user_id: '', role: 'reader' })
 const userForm = ref({ username: '', password: '', display_name: '', is_admin: false })
 const pwForm = ref({ old_password: '', new_password: '' })
 
+// Saldo-Abgleich gegen Bank (4.2)
+const balanceCheckAccount = ref('')
+const balanceCheck = ref(null)
+const balanceCheckBusy = ref(false)
+
 onMounted(async () => {
   if (user.value?.is_admin) users.value = await api.get('/users')
 })
+
+async function runBalanceCheck() {
+  if (!balanceCheckAccount.value) return
+  balanceCheckBusy.value = true
+  error.value = ''
+  try {
+    balanceCheck.value = await api.get(`/accounts/${balanceCheckAccount.value}/balance-check`)
+  } catch (e) { error.value = e.message } finally { balanceCheckBusy.value = false }
+}
 
 async function saveSettings() {
   await api.put('/auth/settings', { color_scheme: settings.value.color_scheme,
@@ -143,6 +157,39 @@ async function changePassword() {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="tile wide">
+        <h3>Saldo-Abgleich gegen Bank</h3>
+        <p class="hint">Wo eine Bank einen laufenden Saldo mitliefert (z.B. ING), wird der
+          berechnete Kontostand dagegen geprüft – Abweichungen erkennen fehlende Importe oder
+          Lücken (4.2).</p>
+        <div class="form-row">
+          <select v-model="balanceCheckAccount">
+            <option value="" disabled>Konto wählen…</option>
+            <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+          </select>
+          <button class="primary" :disabled="!balanceCheckAccount || balanceCheckBusy" @click="runBalanceCheck">Prüfen</button>
+        </div>
+        <div v-if="balanceCheck">
+          <p v-if="!balanceCheck.checked_count" class="hint">
+            Diese Bank liefert in den importierten Buchungen keinen Saldo mit – Abgleich nicht möglich.</p>
+          <p v-else-if="!balanceCheck.rows.length" class="hint">
+            ✓ Alle {{ balanceCheck.checked_count }} geprüften Salden stimmen überein.</p>
+          <table v-else>
+            <thead><tr><th>Datum</th><th>Gegenpartei</th><th class="num">Berechnet</th>
+              <th class="num">Bank-Saldo</th><th class="num">Abweichung</th></tr></thead>
+            <tbody>
+              <tr v-for="r in balanceCheck.rows" :key="r.transaction_id">
+                <td>{{ fmtDate(r.booking_date) }}</td>
+                <td>{{ r.counterparty }}</td>
+                <td class="num">{{ fmtAmount(r.computed_balance) }}</td>
+                <td class="num">{{ fmtAmount(r.bank_balance) }}</td>
+                <td class="num neg">{{ fmtAmount(r.deviation) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div v-if="user && user.is_admin" class="tile wide">
