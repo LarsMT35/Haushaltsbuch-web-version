@@ -1,5 +1,0 @@
-1. Python-Umgebung mit Version 3.11 anlegen
-2. In Visual Studio Code auf cmd als Terminal wechseln: Show and Run comands > Terminal: Secelct Default Profile > Command Prompt
-3. Interpreter auswählen: Show and Run comands > Python: Select Interpreter > Angelegte Umgebung auswählen
-4. Neues Terminal öffnen (Ctrl+Shift+ö)
-5. Im Terminal auf repository navigieren (über cd als Befehl) und folgendes ausführen: pip install -r requirements.txt
