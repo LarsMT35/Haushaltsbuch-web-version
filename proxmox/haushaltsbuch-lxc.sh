@@ -6,11 +6,14 @@
 #
 #    bash -c "$(wget -qLO - https://raw.githubusercontent.com/LarsMT35/Haushaltsbuch-web-version/main/proxmox/haushaltsbuch-lxc.sh)"
 #
-#  Erstellt einen unprivilegierten Debian-12-LXC (Nesting für Docker),
+#  Erstellt einen unprivilegierten Debian-LXC (Nesting für Docker),
 #  installiert Docker + die App und gibt am Ende URL & Zugangsdaten aus.
+#  Standardmäßig Debian 13 "Trixie" – fällt automatisch auf 12 "Bookworm"
+#  zurück, falls auf dem Proxmox-Host noch kein Trixie-Template verfügbar ist.
 #
 #  Standardwerte per Umgebungsvariable überschreibbar, z.B.:
 #    CT_ID=120 DISK_SIZE=10 BRIDGE=vmbr1 bash haushaltsbuch-lxc.sh
+#    OS_VERSION=12 bash haushaltsbuch-lxc.sh   # explizit Bookworm erzwingen
 # ============================================================================
 set -euo pipefail
 
@@ -30,7 +33,7 @@ cat <<'EOF'
  / __  / /_/ / /_/ (__  ) / / / /_/ / / /_(__  ) /_/ / /_/ / / /__/ / / /
 /_/ /_/\__,_/\__,_/____/_/ /_/\__,_/_/\__/____/_.___/\__,_/_/\___/_/ /_/
 
-          Haushaltsbuch Web  ·  LXC-Installer (Debian 12 + Docker)
+          Haushaltsbuch Web  ·  LXC-Installer (Debian + Docker)
 EOF
 }
 
@@ -50,6 +53,7 @@ echo
 # ------------------------------------------------------- Konfiguration
 CT_ID="${CT_ID:-$(pvesh get /cluster/nextid)}"
 HOSTNAME="${HOSTNAME_CT:-haushaltsbuch}"
+OS_VERSION="${OS_VERSION:-13}"        # 13 = Trixie (Standard), 12 = Bookworm
 DISK_SIZE="${DISK_SIZE:-8}"          # GB
 CORES="${CORES:-2}"
 RAM="${RAM:-2048}"                   # MB
@@ -63,6 +67,7 @@ APP_DIR="/opt/haushaltsbuch"
 APP_PORT="${APP_PORT:-8080}"
 
 echo -e " ${INFO}  Container-ID: ${BL}${CT_ID}${CL}   Hostname: ${BL}${HOSTNAME}${CL}"
+echo -e " ${INFO}  Betriebssystem: ${BL}Debian ${OS_VERSION}${CL}"
 echo -e " ${INFO}  Ressourcen:   ${BL}${CORES} Kerne, ${RAM} MB RAM, ${DISK_SIZE} GB Disk auf ${STORAGE}${CL}"
 echo -e " ${INFO}  Netzwerk:     ${BL}${BRIDGE} (${NET})${CL}"
 echo
@@ -70,11 +75,19 @@ read -r -p " Weiter mit diesen Einstellungen? [J/n] " ANSWER
 case "${ANSWER:-J}" in [JjYy]*|"") ;; *) echo " Abgebrochen."; exit 0 ;; esac
 
 # ------------------------------------------------------- Template holen
-msg_info "Suche Debian-12-Template"
+msg_info "Suche Debian-${OS_VERSION}-Template"
 pveam update >/dev/null
-TEMPLATE=$(pveam available --section system | awk '/debian-12-standard/{print $2}' | sort -V | tail -1)
+find_template() {
+  pveam available --section system | awk -v ver="$1" '$2 ~ "^debian-"ver"-standard"{print $2}' | sort -V | tail -1
+}
+TEMPLATE=$(find_template "$OS_VERSION")
+if [ -z "$TEMPLATE" ] && [ "$OS_VERSION" = "13" ]; then
+  msg_error "Kein debian-13-standard-Template verfügbar – falle auf Debian 12 (Bookworm) zurück."
+  OS_VERSION="12"
+  TEMPLATE=$(find_template "$OS_VERSION")
+fi
 if [ -z "$TEMPLATE" ]; then
-  msg_error "Kein debian-12-standard-Template gefunden."
+  msg_error "Kein debian-${OS_VERSION}-standard-Template gefunden. 'pveam update' erneut versuchen oder OS_VERSION setzen."
   exit 1
 fi
 if ! pveam list "$TMPL_STORAGE" | grep -q "$TEMPLATE"; then

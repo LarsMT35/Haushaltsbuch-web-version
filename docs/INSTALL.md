@@ -50,6 +50,7 @@ bash -c "$(wget -qLO - https://raw.githubusercontent.com/LarsMT35/Haushaltsbuch-
 |---|---|---|
 | `CT_ID` | nächste freie ID | Container-ID |
 | `HOSTNAME_CT` | `haushaltsbuch` | Hostname des LXC |
+| `OS_VERSION` | `13` (Trixie) | Debian-Version; fällt automatisch auf `12` (Bookworm) zurück, falls kein Trixie-Template verfügbar ist |
 | `DISK_SIZE` | `8` | Disk in GB |
 | `CORES` / `RAM` | `2` / `2048` | CPU-Kerne / RAM in MB |
 | `BRIDGE` | `vmbr0` | Netzwerk-Bridge |
