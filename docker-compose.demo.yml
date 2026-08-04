@@ -1,0 +1,54 @@
+# Demo-Stack zum Zeigen/Testen – komplett getrennt von einer Produktiv-
+# Instanz: eigene Datenbank, eigenes Volume, eigener Port. Läuft parallel zu
+# docker-compose.yml auf demselben Host, ohne dessen Daten zu berühren.
+#
+# Feste, unsichere Zugangsdaten sind hier bewusst in Ordnung – in diesem
+# Stack landen nur Wegwerf-/Demodaten, niemals echte Finanzdaten.
+#
+# Start:  docker compose -f docker-compose.demo.yml up -d --build
+# Stop:   docker compose -f docker-compose.demo.yml down          (Daten bleiben)
+# Reset:  docker compose -f docker-compose.demo.yml down -v       (Daten weg)
+name: haushaltsbuch-demo
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: haushaltsbuch_demo
+      POSTGRES_USER: haushaltsbuch
+      POSTGRES_PASSWORD: demo-nur-testdaten
+    volumes:
+      - demo_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U haushaltsbuch"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg2://haushaltsbuch:demo-nur-testdaten@db:5432/haushaltsbuch_demo
+      SECRET_KEY: demo-nur-testdaten-nicht-fuer-produktion-verwenden
+      # Wird beim allerersten Start automatisch als Admin angelegt (seed.py) –
+      # bewusst simple Zugangsdaten, siehe Hinweis oben.
+      ADMIN_USERNAME: test
+      ADMIN_PASSWORD: test
+      ADMIN_DISPLAY_NAME: Demo
+      CORS_ORIGINS: ""
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "8181:80"
+    depends_on:
+      - backend
+
+volumes:
+  demo_db_data:

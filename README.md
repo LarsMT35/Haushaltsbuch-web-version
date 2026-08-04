@@ -44,6 +44,17 @@ aus der `.env` (danach Passwort ändern). Weitere Nutzer legt der Admin unter
 **Backup** (Kapitel 5): `scripts/backup.sh /mnt/nas/haushaltsbuch` per Cron,
 Rücksicherung mit `scripts/restore.sh <dump.sql.gz>` mindestens einmal testen.
 
+### Demo-Instanz zum Zeigen/Testen
+
+Läuft parallel zu einer produktiven Installation, komplett eigene Datenbank,
+kein Risiko für echte Daten:
+
+```bash
+scripts/demo-up.sh      # startet auf Port 8181, Login test/test
+scripts/demo-down.sh    # stoppen (Demodaten bleiben)
+scripts/demo-down.sh --reset   # stoppen + Demodaten löschen
+```
+
 ## Entwicklung
 
 ```bash
