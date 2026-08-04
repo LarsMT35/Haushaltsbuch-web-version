@@ -6,7 +6,8 @@ const accounts = inject('accounts')
 const user = inject('user')
 const categories = ref([])
 const error = ref('')
-const form = ref({ name: '', scope: 'personal', account_id: null, parent_id: null, is_fixed_cost: false })
+const form = ref({ name: '', scope: 'personal', account_id: null, parent_id: null,
+                  is_fixed_cost: false, is_transfer_like: false })
 const mergeSource = ref(null)
 const mergeTarget = ref('')
 const info = ref('')
@@ -64,6 +65,14 @@ async function toggleFixed(cat) {
   error.value = ''
   try {
     await api.put(`/categories/${cat.id}`, { is_fixed_cost: !cat.is_fixed_cost })
+    await load()
+  } catch (e) { error.value = e.message }
+}
+
+async function toggleTransferLike(cat) {
+  error.value = ''
+  try {
+    await api.put(`/categories/${cat.id}`, { is_transfer_like: !cat.is_transfer_like })
     await load()
   } catch (e) { error.value = e.message }
 }
@@ -126,6 +135,8 @@ function parentName(id) {
             <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select></div>
         <div><label>Fixkosten</label><input type="checkbox" v-model="form.is_fixed_cost" /></div>
+        <div><label title="Zählt nicht als Einnahme/Ausgabe, sondern wie eine Sparkonten-Bewegung – z.B. für Sparplan-Ausführungen ohne mitgeführtes Depot-Konto">Wie Umbuchung behandeln</label>
+          <input type="checkbox" v-model="form.is_transfer_like" /></div>
         <button class="primary" :disabled="!form.name" @click="create">Anlegen</button>
       </div>
     </div>
@@ -154,9 +165,13 @@ function parentName(id) {
               <span v-if="c.scope === 'account'" class="badge gray">
                 {{ accounts.find((a) => a.id === c.account_id)?.name }}</span>
             </td>
-            <td><span v-if="c.is_fixed_cost" class="badge">fix</span></td>
+            <td>
+              <span v-if="c.is_fixed_cost" class="badge">fix</span>
+              <span v-if="c.is_transfer_like" class="badge gray" title="Zählt wie eine Umbuchung, nicht als Ausgabe">wie Umbuchung</span>
+            </td>
             <td style="text-align: right; white-space: nowrap">
               <button @click="toggleFixed(c)">{{ c.is_fixed_cost ? 'fix ✕' : 'als fix markieren' }}</button>
+              <button @click="toggleTransferLike(c)">{{ c.is_transfer_like ? 'Umbuchung ✕' : 'wie Umbuchung' }}</button>
               <button @click="rename(c)">Umbenennen</button>
               <button @click="mergeSource = c">Zusammenführen</button>
             </td>

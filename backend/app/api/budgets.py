@@ -118,17 +118,21 @@ def budget_status(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
                    Transaction.booking_date <= last,
                    Transaction.transfer_id.is_(None))
            .all())
+    all_categories = db.query(Category).all()
+    transfer_like_ids = {c.id for c in all_categories if c.is_transfer_like}
     spent: dict[int, Decimal] = {}
     for t in txs:
         parts = ([(s.category_id, s.amount) for s in t.splits]
                  if t.splits else [(t.category_id, t.amount_ref)])
         for cid, amount in parts:
-            if cid is None or amount >= 0:
+            # Kategorien "wie Umbuchung behandeln" zählen wie echte Umbuchungen
+            # nicht als Ausgabe (4.9), daher auch nicht als Budget-Verbrauch
+            if cid is None or amount >= 0 or cid in transfer_like_ids:
                 continue
             spent[cid] = spent.get(cid, Decimal("0")) + -amount
 
     th = get_thresholds(db)
-    categories = {c.id: c.name for c in db.query(Category).all()}
+    categories = {c.id: c.name for c in all_categories}
     rows = []
     for cid, b in effective.items():
         used = float(spent.get(cid, Decimal("0")))

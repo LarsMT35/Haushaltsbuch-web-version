@@ -115,6 +115,7 @@ class CategoryOut(ORMModel):
     account_id: int | None
     user_id: int | None
     is_fixed_cost: bool
+    is_transfer_like: bool
     active: bool
 
 
@@ -124,12 +125,14 @@ class CategoryCreate(BaseModel):
     scope: str = "global"
     account_id: int | None = None
     is_fixed_cost: bool = False
+    is_transfer_like: bool = False
 
 
 class CategoryUpdate(BaseModel):
     name: str | None = None
     parent_id: int | None = None
     is_fixed_cost: bool | None = None
+    is_transfer_like: bool | None = None
     active: bool | None = None
 
 
@@ -589,6 +592,7 @@ class CategoryExportItem(BaseModel):
     scope: str
     account_name: str | None = None
     is_fixed_cost: bool
+    is_transfer_like: bool = False
     active: bool
 
 

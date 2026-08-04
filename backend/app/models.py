@@ -121,6 +121,11 @@ class Category(Base):
     account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"), nullable=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     is_fixed_cost: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Buchungen dieser Kategorie zählen nicht als Einnahme/Ausgabe, sondern wie
+    # eine Sparkonten-Bewegung (4.9) – für Fälle, in denen eine "echte"
+    # Umbuchung (4.4) mangels Gegenbuchung nicht verknüpfbar ist, z.B.
+    # Sparplan-Ausführungen ohne mitgeführtes Depot-Konto.
+    is_transfer_like: Mapped[bool] = mapped_column(Boolean, default=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     parent: Mapped["Category | None"] = relationship(remote_side=[id])

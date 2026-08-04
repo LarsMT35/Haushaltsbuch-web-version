@@ -119,7 +119,7 @@ def export_categories(user: User = Depends(get_current_user), db: Session = Depe
         CategoryExportItem(
             name=c.name, parent_name=by_id[c.parent_id].name if c.parent_id in by_id else None,
             scope=c.scope, account_name=account_names.get(c.account_id),
-            is_fixed_cost=c.is_fixed_cost, active=c.active,
+            is_fixed_cost=c.is_fixed_cost, is_transfer_like=c.is_transfer_like, active=c.active,
         )
         for c in cats
     ]
@@ -140,8 +140,14 @@ def import_categories(payload: list[CategoryExportItem], user: User = Depends(ge
         key = (item.name, item.scope)
         if key in existing:
             cat = existing[key]
+            changed = False
             if cat.is_fixed_cost != item.is_fixed_cost:
                 cat.is_fixed_cost = item.is_fixed_cost
+                changed = True
+            if cat.is_transfer_like != item.is_transfer_like:
+                cat.is_transfer_like = item.is_transfer_like
+                changed = True
+            if changed:
                 updated_fixed += 1
             else:
                 skipped_existing += 1
@@ -158,7 +164,8 @@ def import_categories(payload: list[CategoryExportItem], user: User = Depends(ge
             account_id = account.id
         cat = Category(name=item.name, scope=item.scope, account_id=account_id,
                        user_id=user.id if item.scope == "personal" else None,
-                       is_fixed_cost=item.is_fixed_cost, active=item.active)
+                       is_fixed_cost=item.is_fixed_cost, is_transfer_like=item.is_transfer_like,
+                       active=item.active)
         db.add(cat)
         db.flush()
         existing[key] = cat

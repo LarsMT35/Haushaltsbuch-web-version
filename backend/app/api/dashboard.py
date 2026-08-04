@@ -73,9 +73,14 @@ def summary(date_from: date | None = None, date_to: date | None = None,
     for t in txs:
         month = t.booking_date.strftime("%Y-%m")
         acc = accounts.get(t.account_id)
-        if t.transfer_id:
-            # Umbuchung: nicht in Einnahmen/Ausgaben, aber Sparkonten-Bewegung (4.9)
-            if acc and acc.type in SAVINGS_TYPES:
+        cat = categories.get(t.category_id) if t.category_id else None
+        if t.transfer_id or (cat and cat.is_transfer_like):
+            # Echte Umbuchung ODER Kategorie "wie Umbuchung behandeln" (z.B.
+            # Sparplan-Ausführung ohne mitgeführtes Depot-Konto): nicht in
+            # Einnahmen/Ausgaben, aber Sparkonten-Bewegung (4.9). Bei
+            # Kategorie-Markierung unabhängig vom Kontotyp der zahlenden
+            # Seite, da das Ziel (z.B. Depot) oft gar nicht selbst geführt wird.
+            if (acc and acc.type in SAVINGS_TYPES) or (cat and cat.is_transfer_like):
                 savings[month] += t.amount_ref
             continue
         if t.amount_ref >= 0:
@@ -90,7 +95,6 @@ def summary(date_from: date | None = None, date_to: date | None = None,
             for cid, amount in parts:
                 if amount < 0:
                     by_cat[cid] += -amount
-        cat = categories.get(t.category_id) if t.category_id else None
         key = ("income" if t.amount_ref >= 0 else "expenses") + ("_fixed" if cat and cat.is_fixed_cost else "_variable")
         fixed[key] += abs(t.amount_ref)
         if t.category_id is None and not t.splits:
@@ -184,13 +188,15 @@ def networth(date_from: date | None = None, date_to: date | None = None,
 def savings_rate(date_from: date | None = None, date_to: date | None = None,
                  account_id: int | None = None,
                  user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Sparquote im Zeitverlauf (4.9): Bilanz ÷ Einnahmen je Monat, ohne Umbuchungen."""
+    """Sparquote im Zeitverlauf (4.9): Bilanz ÷ Einnahmen je Monat, ohne Umbuchungen
+    (echte wie auch Kategorien mit "wie Umbuchung behandeln")."""
     if date_to is None:
         date_to = date.today()
     if date_from is None:
         date_from = date_to.replace(day=1).replace(year=date_to.year - 1)
     ids = accessible_account_ids(db, user)
     filter_ids = [account_id] if account_id is not None and account_id in ids else ids
+    transfer_like_ids = {cid for (cid,) in db.query(Category.id).filter(Category.is_transfer_like.is_(True)).all()}
     txs = (db.query(Transaction)
            .filter(Transaction.account_id.in_(filter_ids),
                    Transaction.booking_date >= date_from,
@@ -201,6 +207,8 @@ def savings_rate(date_from: date | None = None, date_to: date | None = None,
     inc = {m: Decimal("0") for m in months}
     out = {m: Decimal("0") for m in months}
     for t in txs:
+        if t.category_id in transfer_like_ids:
+            continue
         m = t.booking_date.strftime("%Y-%m")
         if m not in inc:
             continue
@@ -217,20 +225,25 @@ def savings_rate(date_from: date | None = None, date_to: date | None = None,
 @router.get("/year-comparison", response_model=YearComparisonOut)
 def year_comparison(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Jahresvergleich der Ausgaben pro Kategorie (4.9) – möglich durch die
-    durchgehende Historie ohne Jahresschnitt."""
+    durchgehende Historie ohne Jahresschnitt. Kategorien mit "wie Umbuchung
+    behandeln" zählen hier nicht als Ausgabe, wie echte Umbuchungen auch."""
     ids = accessible_account_ids(db, user)
     txs = (db.query(Transaction)
            .filter(Transaction.account_id.in_(ids), Transaction.transfer_id.is_(None))
            .all())
-    categories = {c.id: c.name for c in db.query(Category).all()}
+    all_categories = db.query(Category).all()
+    categories = {c.id: c.name for c in all_categories}
+    transfer_like_ids = {c.id for c in all_categories if c.is_transfer_like}
     per: dict[tuple[int | None, int], Decimal] = defaultdict(Decimal)
     years: set[int] = set()
     for t in txs:
+        if t.category_id in transfer_like_ids and not t.splits:
+            continue
         year = t.booking_date.year
         parts = ([(s.category_id, s.amount) for s in t.splits]
                  if t.splits else [(t.category_id, t.amount_ref)])
         for cid, amount in parts:
-            if amount >= 0:
+            if amount >= 0 or cid in transfer_like_ids:
                 continue
             per[(cid, year)] += -amount
             years.add(year)
