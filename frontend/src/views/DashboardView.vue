@@ -18,16 +18,49 @@ const categories = ref([])
 function fmtDateLocal(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
-function lastMonthRange() {
+function lastMonthDates() {
   const now = new Date()
-  const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0) // Tag 0 = letzter Tag des Vormonats
-  const lastMonthStart = new Date(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), 1)
-  return { date_from: fmtDateLocal(lastMonthStart), date_to: fmtDateLocal(lastMonthEnd) }
+  const end = new Date(now.getFullYear(), now.getMonth(), 0) // Tag 0 = letzter Tag des Vormonats
+  const start = new Date(end.getFullYear(), end.getMonth(), 1)
+  return [start, end]
+}
+function lastMonthRange() {
+  const [start, end] = lastMonthDates()
+  return { date_from: fmtDateLocal(start), date_to: fmtDateLocal(end) }
 }
 
 // Filter-Chips: mehrere Konten UND mehrere Kategorien gleichzeitig wählbar,
 // alle Auswahlen filtern zusammen alle Kacheln (4.9.1)
 const filter = ref({ account_ids: [], category_ids: [], ...lastMonthRange() })
+
+// Fertige Zeitraum-Quicklinks (4.9): ein Klick setzt Start+Ende, statt beide
+// Datumsfelder von Hand zu füllen. Jahre werden aus den vorhandenen Buchungen
+// abgeleitet (Jahresvergleich-Kachel liefert sie ohnehin schon mit).
+const activePreset = ref('last_month')
+
+function setRange(from, to, preset) {
+  filter.value.date_from = fmtDateLocal(from)
+  filter.value.date_to = fmtDateLocal(to)
+  activePreset.value = preset
+}
+const PRESETS = {
+  this_month: () => { const n = new Date(); return [new Date(n.getFullYear(), n.getMonth(), 1), n] },
+  last_month: () => lastMonthDates(),
+  this_year: () => { const n = new Date(); return [new Date(n.getFullYear(), 0, 1), n] },
+  last_year: () => { const y = new Date().getFullYear() - 1; return [new Date(y, 0, 1), new Date(y, 11, 31)] },
+  last_12_months: () => { const n = new Date(); return [new Date(n.getFullYear(), n.getMonth() - 11, 1), n] },
+}
+function applyPreset(key) {
+  const [from, to] = PRESETS[key]()
+  setRange(from, to, key)
+}
+function applyYear(year) {
+  if (!year) return
+  setRange(new Date(Number(year), 0, 1), new Date(Number(year), 11, 31), `year_${year}`)
+}
+// manuelle Eingabe in den Datumsfeldern hebt die Quicklink-Markierung auf
+function onManualDate() { activePreset.value = null }
+const availableYears = computed(() => (yearComp.value?.years || []).slice().sort((a, b) => b - a))
 
 function accountLabel() {
   const n = filter.value.account_ids.length
@@ -167,13 +200,26 @@ const palette = ['#2563eb', '#0f766e', '#b45309', '#7c3aed', '#be185d', '#0369a1
         </div>
       </details>
       <!-- frei wählbarer Zeitraum statt festem Raster (4.9) -->
-      <input type="date" v-model="filter.date_from" />
-      <input type="date" v-model="filter.date_to" />
+      <input type="date" v-model="filter.date_from" @input="onManualDate" />
+      <input type="date" v-model="filter.date_to" @input="onManualDate" />
       <span v-if="hiddenTiles.length" class="hint" style="align-self: center">
         Ausgeblendet:
         <button v-for="t in hiddenTiles" :key="t.id" @click="show(t.id)" style="margin-left: .25rem">
           + {{ t.label }}</button>
       </span>
+    </div>
+    <!-- Zeitraum-Quicklinks (4.9): fertige Voreinstellungen statt beide Datumsfelder von Hand zu füllen -->
+    <div class="chips">
+      <button type="button" :class="{ active: activePreset === 'this_month' }" @click="applyPreset('this_month')">Dieser Monat</button>
+      <button type="button" :class="{ active: activePreset === 'last_month' }" @click="applyPreset('last_month')">Letzter Monat</button>
+      <button type="button" :class="{ active: activePreset === 'this_year' }" @click="applyPreset('this_year')">Dieses Jahr</button>
+      <button type="button" :class="{ active: activePreset === 'last_year' }" @click="applyPreset('last_year')">Letztes Jahr</button>
+      <button type="button" :class="{ active: activePreset === 'last_12_months' }" @click="applyPreset('last_12_months')">Letzte 12 Monate</button>
+      <select :value="activePreset && activePreset.startsWith('year_') ? activePreset.slice(5) : ''"
+              @change="applyYear($event.target.value)" title="Ganzes Kalenderjahr auswählen">
+        <option value="">Jahr wählen…</option>
+        <option v-for="y in availableYears" :key="y" :value="y">{{ y }}</option>
+      </select>
     </div>
     <p class="hint" style="margin-top: -0.5rem">Mehrere Konten/Kategorien gleichzeitig wählbar, kombinieren sich als Filter. Kacheln per Drag &amp; Drop anordnen, ✕ blendet aus – Layout wird pro Nutzer gespeichert.</p>
 

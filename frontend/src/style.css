@@ -158,6 +158,8 @@ button, .btn {
 }
 button.primary, .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button:disabled { opacity: .5; cursor: default; }
+/* Zeitraum-Quicklinks: markiert die aktuell aktive Voreinstellung (4.9) */
+.chips button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
 input, select, textarea {
   border: 1px solid var(--border); border-radius: 8px; padding: .4rem .6rem;
