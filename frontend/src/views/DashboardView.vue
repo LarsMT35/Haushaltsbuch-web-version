@@ -11,9 +11,23 @@ const yearComp = ref(null)
 const recurringStatus = ref(null)
 const deposits = ref(null)
 const categories = ref([])
+
+// Zeitraum-Voreinstellung: letzter abgeschlossener Kalendermonat (4.9) –
+// bewusst lokale Datumsteile statt toISOString(), sonst verschiebt die
+// UTC-Umrechnung das Datum je nach Zeitzone um einen Tag.
+function fmtDateLocal(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function lastMonthRange() {
+  const now = new Date()
+  const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0) // Tag 0 = letzter Tag des Vormonats
+  const lastMonthStart = new Date(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), 1)
+  return { date_from: fmtDateLocal(lastMonthStart), date_to: fmtDateLocal(lastMonthEnd) }
+}
+
 // Filter-Chips: mehrere Konten UND mehrere Kategorien gleichzeitig wählbar,
 // alle Auswahlen filtern zusammen alle Kacheln (4.9.1)
-const filter = ref({ account_ids: [], category_ids: [], date_from: '', date_to: '' })
+const filter = ref({ account_ids: [], category_ids: [], ...lastMonthRange() })
 
 function accountLabel() {
   const n = filter.value.account_ids.length

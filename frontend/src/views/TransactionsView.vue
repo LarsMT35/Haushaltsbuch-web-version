@@ -10,6 +10,7 @@ const categories = ref([])
 const page = ref({ total: 0, items: [] })
 const suggestions = ref([])
 const error = ref('')
+const info = ref('')
 const limit = 100
 const offset = ref(0)
 
@@ -140,6 +141,18 @@ async function unlink(tx) {
   await load()
 }
 
+async function detectTransfers() {
+  // manueller Auslöser für die Umbuchungserkennung (4.4) – sonst läuft sie
+  // nur automatisch nach CSV-Import bzw. beim Anlegen einer manuellen Buchung
+  error.value = ''; info.value = ''
+  try {
+    const r = await api.post('/transfers/detect')
+    info.value = `${r.linked} Umbuchung(en) automatisch verknüpft (IBAN-Beleg).`
+    await load()
+    await refreshAccounts()
+  } catch (e) { error.value = e.message }
+}
+
 function doExport() {
   const params = {}
   for (const [k, v] of Object.entries(filter.value)) if (v && k !== 'unassigned') params[k] = v
@@ -153,6 +166,7 @@ function doExport() {
       <h1>Buchungen</h1>
       <div class="spacer"></div>
       <button @click="showManual = !showManual">+ Manuelle Buchung</button>
+      <button @click="detectTransfers" title="Sucht Umbuchungspaare mit IBAN-Beleg automatisch (4.4)">Umbuchungen erkennen</button>
       <button @click="doExport">Export CSV</button>
     </div>
 
@@ -196,6 +210,7 @@ function doExport() {
     </div>
 
     <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="info" class="hint">✓ {{ info }}</p>
 
     <div v-if="suggestions.length" class="tile warn" style="margin-bottom: 1rem">
       <h3>Mögliche Umbuchungen ({{ suggestions.length }})</h3>

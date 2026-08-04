@@ -97,11 +97,14 @@ automatisch aus.
   Priorität, „künftig immer so“-Regel aus manueller Zuordnung, rückwirkende
   Neuanwendung
 - ✅ Umbuchungserkennung (auto bei IBAN-Beleg, sonst Vorschlag zur Bestätigung),
-  manuelles Verknüpfen/Auflösen
+  manuelles Verknüpfen/Auflösen, jederzeit per Button „Umbuchungen erkennen“
+  in der Buchungsliste erneut anstoßbar
 - ✅ Manuelle Buchungen / Bargeld-Konto
 - ✅ Dashboard: Kennzahlen, Monatsbilanz, Monatsausgaben, Kategorie-Donut,
-  fix/variabel, Sparkonten-Bewegung, Top-Ausgaben, Filter-Chips, Warnkachel
-  für nicht zugeordnete Buchungen, freier Zeitraum, mobiltauglich
+  fix/variabel, Sparkonten-Bewegung, Top-Ausgaben, Warnkachel für nicht
+  zugeordnete Buchungen, mobiltauglich; Filter für mehrere Konten UND
+  mehrere Kategorien gleichzeitig kombinierbar, freier Zeitraum (defaultet
+  auf den letzten abgeschlossenen Kalendermonat)
 - ✅ Suche & CSV-Export, Änderungsprotokoll (AuditLog), Backup-Skripte
 
 ### v1.1 – Komfort

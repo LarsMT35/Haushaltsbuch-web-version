@@ -152,3 +152,50 @@ def test_dashboard_networth_and_year_comparison_multi_account_filter(client, aut
                                     "account_ids": [a1["id"]]}).json()
     names_filtered = {s["name"] for s in nw_filtered["series"]}
     assert names_filtered == {"V13b-NW-A"}
+
+
+def test_transfers_detect_endpoint_manual_trigger(client, auth_headers):
+    """'Umbuchungen erkennen'-Button in der Buchungsliste (4.4): POST
+    /transfers/detect verknüpft auch Gegenbuchungen, die (z.B. aus
+    Altbeständen) ohne den Auto-Link-Hook der Buchungserstellung entstanden
+    sind – nicht nur implizit nach Import/manueller Buchung."""
+    from app.db import SessionLocal
+    from app.models import Transaction
+
+    # Ungewöhnlicher Betrag, damit die (session-weite, geteilte) Test-DB keine
+    # zufällig gleich hohe Gegenbuchung aus einem anderen Test beisteuert.
+    AMOUNT = "733.19"
+
+    h = auth_headers
+    giro = client.post("/api/v1/accounts", headers=h, json={
+        "name": "V13b-Detect-Giro", "type": "giro", "iban": "DE00TESTDETECTGIRO0001"}).json()
+    tagesgeld = client.post("/api/v1/accounts", headers=h, json={
+        "name": "V13b-Detect-Tagesgeld", "type": "tagesgeld", "iban": "DE00TESTDETECTTG00002"}).json()
+
+    # Direkt in der DB anlegen (am Auto-Link-Hook von POST /transactions vorbei),
+    # um den Fall "noch unverknüpfte Gegenbuchung" zu simulieren.
+    with SessionLocal() as db:
+        db.add(Transaction(account_id=giro["id"], booking_date=date(2026, 7, 5),
+                           amount=f"-{AMOUNT}", amount_ref=f"-{AMOUNT}", counterparty="Tagesgeld",
+                           counterparty_iban=tagesgeld["iban"], purpose="Uebertrag", is_manual=True))
+        db.add(Transaction(account_id=tagesgeld["id"], booking_date=date(2026, 7, 6),
+                           amount=AMOUNT, amount_ref=AMOUNT, counterparty="Girokonto",
+                           counterparty_iban=giro["iban"], purpose="Uebertrag", is_manual=True))
+        db.commit()
+
+    before = client.get("/api/v1/transactions", headers=h,
+                        params={"account_id": giro["id"]}).json()["items"]
+    assert all(t["transfer_id"] is None for t in before)
+
+    r = client.post("/api/v1/transfers/detect", headers=h)
+    assert r.status_code == 200
+    assert r.json()["linked"] == 1
+
+    after = client.get("/api/v1/transactions", headers=h,
+                       params={"account_id": giro["id"]}).json()["items"]
+    tx = next(t for t in after if t["purpose"] == "Uebertrag")
+    assert tx["transfer_id"] is not None
+
+    # erneuter Aufruf: bereits verknüpftes Paar wird nicht doppelt gezählt (idempotent)
+    r = client.post("/api/v1/transfers/detect", headers=h)
+    assert r.json()["linked"] == 0
