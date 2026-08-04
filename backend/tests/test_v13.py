@@ -127,3 +127,34 @@ def test_rule_export_import_roundtrip(client, auth_headers):
         "booking_text_contains": "", "amount_min": None, "amount_max": None, "account_name": None,
     }])
     assert r.json()["skipped_no_category"] == 1
+
+
+def test_bank_profile_export_import_roundtrip(client, auth_headers):
+    h = auth_headers
+    exported = client.get("/api/v1/imports/profiles/export", headers=h).json()
+    names = {p["name"] for p in exported}
+    assert "ING" in names and any("Sparkasse" in n for n in names)
+
+    # Re-Import der exportierten (bereits vorhandenen) Profile -> alles übersprungen
+    r = client.post("/api/v1/imports/profiles/import", headers=h, json=exported)
+    body = r.json()
+    assert body["created"] == 0
+    assert body["skipped_existing"] == len(exported)
+
+    # Neues Profil (z.B. von einer anderen Installation exportiert) wird angelegt
+    new_profile = {
+        "name": "V13-Testbank", "delimiter": ";", "quotechar": '"', "encoding": "utf-8-sig",
+        "skip_rows": 0, "header_signature": "", "column_map": {"booking_date": "Datum", "amount": "Betrag"},
+        "date_formats": ["%d.%m.%Y"], "decimal_separator": ",", "thousands_separator": ".",
+        "negate_amount": False,
+    }
+    r = client.post("/api/v1/imports/profiles/import", headers=h, json=[new_profile])
+    assert r.json()["created"] == 1
+
+    profiles = {p["name"] for p in client.get("/api/v1/imports/profiles", headers=h).json()}
+    assert "V13-Testbank" in profiles
+
+    # erneuter Import desselben neuen Profils -> jetzt Duplikat, nichts doppelt
+    r = client.post("/api/v1/imports/profiles/import", headers=h, json=[new_profile])
+    assert r.json()["created"] == 0
+    assert r.json()["skipped_existing"] == 1

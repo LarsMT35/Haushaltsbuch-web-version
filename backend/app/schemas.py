@@ -619,3 +619,8 @@ class RuleImportResult(BaseModel):
     skipped_duplicate: int
     skipped_no_category: int
     skipped_no_account: int
+
+
+class BankProfileImportResult(BaseModel):
+    created: int
+    skipped_existing: int

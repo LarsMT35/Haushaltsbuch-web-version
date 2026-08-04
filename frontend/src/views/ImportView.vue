@@ -13,7 +13,9 @@ const preview = ref(null)
 const targetAccount = ref('')
 const busy = ref(false)
 const error = ref('')
+const info = ref('')
 const dragOver = ref(false)
+const profileImportInput = ref(null)
 
 // Mapping-Assistent (4.5)
 const analyze = ref(null)
@@ -108,11 +110,44 @@ function catName(id) {
   return c ? c.name : ''
 }
 const includedCount = () => preview.value ? preview.value.rows.filter((r) => r.include).length : 0
+
+// Export/Import der Importprofile als JSON (4.11) – z.B. um ein selbst
+// gebautes Mapping (Volksbank, Norwegian Bank, …) zu teilen oder auf eine
+// andere Installation zu übertragen.
+async function exportProfiles() {
+  const data = await api.get('/imports/profiles/export')
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `haushaltsbuch-importprofile-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function importProfiles(e) {
+  const f = e.target.files?.[0]
+  if (!f) return
+  error.value = ''; info.value = ''
+  try {
+    const data = JSON.parse(await f.text())
+    const res = await api.post('/imports/profiles/import', data)
+    info.value = `${res.created} neue Importprofile angelegt (${res.skipped_existing} bereits vorhanden).`
+    await load()
+  } catch (e) { error.value = e.message } finally { e.target.value = '' }
+}
 </script>
 
 <template>
   <div>
-    <h1 style="margin-bottom: 1rem">CSV-Import</h1>
+    <div class="topbar">
+      <h1>CSV-Import</h1>
+      <div class="spacer"></div>
+      <button @click="exportProfiles">Profile exportieren</button>
+      <button @click="profileImportInput.click()">Profile importieren</button>
+      <input ref="profileImportInput" type="file" accept="application/json" hidden @change="importProfiles" />
+    </div>
+    <p v-if="info" class="hint">✓ {{ info }}</p>
 
     <!-- Upload per Drag & Drop (4.5) -->
     <div class="dropzone" :class="{ over: dragOver }"

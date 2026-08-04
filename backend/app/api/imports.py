@@ -9,6 +9,7 @@ from ..models import Account, BankProfile, ImportBatch, Transaction, Transfer, U
 from ..schemas import (
     AnalyzeOut,
     BankProfileCreate,
+    BankProfileImportResult,
     BankProfileOut,
     ImportBatchOut,
     ImportCommitIn,
@@ -42,6 +43,36 @@ def create_profile(payload: BankProfileCreate, user: User = Depends(get_current_
     log(db, user.id, "bank_profile", profile.id, "create", {"name": profile.name})
     db.commit()
     return profile
+
+
+@router.get("/profiles/export", response_model=list[BankProfileOut])
+def export_profiles(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Importprofile als portable JSON-Liste (4.11) – z.B. um ein selbst
+    gebautes Mapping (Volksbank, Norwegian Bank, …) mit jemandem zu teilen
+    oder auf eine andere Installation zu übertragen. Profile sind
+    eigenständige Konfiguration ohne Fremdschlüssel (Prinzip 1), daher
+    genügt hier – anders als bei Kategorien/Regeln – die direkte Liste."""
+    return db.query(BankProfile).order_by(BankProfile.name).all()
+
+
+@router.post("/profiles/import", response_model=BankProfileImportResult)
+def import_profiles(payload: list[BankProfileCreate], user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    """Importprofile aus einer JSON-Liste einspielen – additiv und
+    idempotent: ein bereits vorhandener Profilname wird übersprungen statt
+    doppelt angelegt oder überschrieben."""
+    existing_names = {name for (name,) in db.query(BankProfile.name).all()}
+    created = skipped = 0
+    for item in payload:
+        if item.name in existing_names:
+            skipped += 1
+            continue
+        db.add(BankProfile(**item.model_dump()))
+        existing_names.add(item.name)
+        created += 1
+    log(db, user.id, "bank_profile", "", "import", {"created": created})
+    db.commit()
+    return BankProfileImportResult(created=created, skipped_existing=skipped)
 
 
 @router.post("/analyze", response_model=AnalyzeOut)
