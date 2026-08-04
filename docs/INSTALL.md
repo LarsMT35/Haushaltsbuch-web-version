@@ -180,3 +180,4 @@ auf dem Proxmox-Host/im LXC genügt; die App bleibt unverändert.
 | Import-Fehler | Encoding/Format prüfen → Mapping-Assistent verwenden |
 | Docker im LXC startet nicht | LXC braucht `features: nesting=1` (im Installer gesetzt) |
 | Version prüfen | `curl -s http://localhost:8080/api/health` |
+| Update erfolgreich, aber Änderungen fehlen im Browser | Browser-Cache auf `index.html` – einmal **Strg+Shift+R** (Hard-Refresh) oder Inkognito-Fenster. Seit dieser Version setzt nginx `no-cache` auf `index.html`, daher tritt es künftig nicht mehr auf. |
