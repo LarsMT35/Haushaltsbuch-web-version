@@ -9,11 +9,39 @@ const error = ref('')
 const form = ref({ name: '', scope: 'personal', account_id: null, parent_id: null, is_fixed_cost: false })
 const mergeSource = ref(null)
 const mergeTarget = ref('')
+const info = ref('')
+const importInput = ref(null)
 
 async function load() {
   categories.value = await api.get('/categories', { include_inactive: false })
 }
 onMounted(load)
+
+// Export/Import als JSON (4.11) – für Backup oder Übertragung auf eine andere Installation
+async function exportCategories() {
+  const data = await api.get('/categories/export')
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `haushaltsbuch-kategorien-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function importCategories(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  error.value = ''; info.value = ''
+  try {
+    const data = JSON.parse(await file.text())
+    const res = await api.post('/categories/import', data)
+    info.value = `${res.created} neu angelegt, ${res.updated_fixed_cost} Fixkosten-Flags aktualisiert ` +
+      `(${res.skipped_existing} unverändert, ${res.skipped_no_permission} ohne Berechtigung, ` +
+      `${res.skipped_no_account} mit unbekanntem Konto übersprungen).`
+    await load()
+  } catch (e) { error.value = e.message } finally { e.target.value = '' }
+}
 
 const groups = computed(() => ({
   'Global (alle Nutzer)': categories.value.filter((c) => c.scope === 'global'),
@@ -68,8 +96,15 @@ function parentName(id) {
 
 <template>
   <div>
-    <h1 style="margin-bottom: 1rem">Kategorien</h1>
+    <div class="topbar">
+      <h1>Kategorien</h1>
+      <div class="spacer"></div>
+      <button @click="exportCategories">Export</button>
+      <button @click="importInput.click()">Import</button>
+      <input ref="importInput" type="file" accept="application/json" hidden @change="importCategories" />
+    </div>
     <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="info" class="hint">✓ {{ info }}</p>
 
     <div class="tile" style="margin-bottom: 1rem">
       <h3>Neue Kategorie</h3>

@@ -20,6 +20,7 @@ from ..schemas import (
     TransactionUpdate,
 )
 from ..services.audit import log
+from ..services.transfers import auto_link_transfers
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -95,6 +96,11 @@ def create_manual(payload: ManualTransactionCreate,
     db.flush()
     log(db, user.id, "transaction", tx.id, "create_manual", {"amount": str(tx.amount)})
     db.commit()
+    # Umbuchungserkennung auch bei manuellen Buchungen (4.4) – z.B. eine per
+    # Hand erfasste Bargeldabhebung soll genauso automatisch mit der
+    # passenden Giro-Abbuchung verknüpft werden wie beim CSV-Import.
+    auto_link_transfers(db, accessible_account_ids(db, user))
+    db.refresh(tx)
     return tx
 
 

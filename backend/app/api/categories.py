@@ -5,8 +5,15 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import accessible_account_ids, get_current_user, require_account_access
-from ..models import Category, Rule, Transaction, TransactionSplit, User
-from ..schemas import CategoryCreate, CategoryMerge, CategoryOut, CategoryUpdate
+from ..models import Account, Category, Rule, Transaction, TransactionSplit, User
+from ..schemas import (
+    CategoryCreate,
+    CategoryExportItem,
+    CategoryImportResult,
+    CategoryMerge,
+    CategoryOut,
+    CategoryUpdate,
+)
 from ..services.audit import log
 
 router = APIRouter(prefix="/categories", tags=["categories"])
@@ -96,3 +103,80 @@ def merge_category(category_id: int, payload: CategoryMerge,
     log(db, user.id, "category", source.id, "merge", {"target": target.id})
     db.commit()
     return target
+
+
+# --------------------------------------------------- Export / Import (4.11)
+
+@router.get("/export", response_model=list[CategoryExportItem])
+def export_categories(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Kategorien als portable JSON-Liste (Namen statt IDs, Prinzip 1) –
+    z.B. für Backup oder Umzug auf eine andere Installation."""
+    cats = visible_categories_query(db, user).all()
+    by_id = {c.id: c for c in cats}
+    account_ids = {c.account_id for c in cats if c.account_id}
+    account_names = {a.id: a.name for a in db.query(Account).filter(Account.id.in_(account_ids)).all()} if account_ids else {}
+    return [
+        CategoryExportItem(
+            name=c.name, parent_name=by_id[c.parent_id].name if c.parent_id in by_id else None,
+            scope=c.scope, account_name=account_names.get(c.account_id),
+            is_fixed_cost=c.is_fixed_cost, active=c.active,
+        )
+        for c in cats
+    ]
+
+
+@router.post("/import", response_model=CategoryImportResult)
+def import_categories(payload: list[CategoryExportItem], user: User = Depends(get_current_user),
+                      db: Session = Depends(get_db)):
+    """Kategorien aus einer JSON-Liste einspielen – additiv und idempotent:
+    bestehende Kategorien (nach Name+Geltungsbereich) werden nicht doppelt
+    angelegt, ihr Fixkosten-Flag wird aber synchronisiert."""
+    existing = {(c.name, c.scope): c for c in visible_categories_query(db, user).all()}
+    account_ids = accessible_account_ids(db, user)
+    accounts_by_name = {a.name: a for a in db.query(Account).filter(Account.id.in_(account_ids)).all()}
+
+    created = updated_fixed = skipped_no_permission = skipped_no_account = skipped_existing = 0
+    for item in payload:
+        key = (item.name, item.scope)
+        if key in existing:
+            cat = existing[key]
+            if cat.is_fixed_cost != item.is_fixed_cost:
+                cat.is_fixed_cost = item.is_fixed_cost
+                updated_fixed += 1
+            else:
+                skipped_existing += 1
+            continue
+        if item.scope == "global" and not user.is_admin:
+            skipped_no_permission += 1
+            continue
+        account_id = None
+        if item.scope == "account":
+            account = accounts_by_name.get(item.account_name or "")
+            if account is None:
+                skipped_no_account += 1
+                continue
+            account_id = account.id
+        cat = Category(name=item.name, scope=item.scope, account_id=account_id,
+                       user_id=user.id if item.scope == "personal" else None,
+                       is_fixed_cost=item.is_fixed_cost, active=item.active)
+        db.add(cat)
+        db.flush()
+        existing[key] = cat
+        created += 1
+
+    # Zweiter Durchgang: Ober-/Unterkategorie-Beziehung auflösen (4.6)
+    for item in payload:
+        if not item.parent_name:
+            continue
+        cat = existing.get((item.name, item.scope))
+        parent = next((c for (n, s), c in existing.items() if n == item.parent_name), None)
+        if cat and parent and cat.parent_id is None:
+            cat.parent_id = parent.id
+
+    log(db, user.id, "category", "", "import",
+        {"created": created, "updated_fixed_cost": updated_fixed})
+    db.commit()
+    return CategoryImportResult(created=created, updated_fixed_cost=updated_fixed,
+                                skipped_existing=skipped_existing,
+                                skipped_no_permission=skipped_no_permission,
+                                skipped_no_account=skipped_no_account)

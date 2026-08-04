@@ -577,3 +577,45 @@ class DepositsOut(BaseModel):
     months: list[str]
     depositors: list[str]
     series: list[DepositorMonth]
+
+
+# --------------------------------------------------- Export / Import (4.11)
+# Referenzierung über Namen statt IDs, damit Export/Import auch zwischen
+# unterschiedlichen Installationen funktioniert (z.B. Umzug, Vorlage teilen).
+
+class CategoryExportItem(BaseModel):
+    name: str
+    parent_name: str | None = None
+    scope: str
+    account_name: str | None = None
+    is_fixed_cost: bool
+    active: bool
+
+
+class CategoryImportResult(BaseModel):
+    created: int
+    updated_fixed_cost: int
+    skipped_existing: int
+    skipped_no_permission: int
+    skipped_no_account: int
+
+
+class RuleExportItem(BaseModel):
+    name: str
+    category_name: str
+    priority: int
+    active: bool
+    text_contains: str
+    counterparty_contains: str
+    iban_equals: str
+    booking_text_contains: str
+    amount_min: Decimal | None
+    amount_max: Decimal | None
+    account_name: str | None = None
+
+
+class RuleImportResult(BaseModel):
+    created: int
+    skipped_duplicate: int
+    skipped_no_category: int
+    skipped_no_account: int

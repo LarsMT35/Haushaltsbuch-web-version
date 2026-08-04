@@ -58,6 +58,15 @@ a { color: var(--accent); text-decoration: none; }
 }
 .topbar .spacer { flex: 1; }
 
+/* Bleibt beim Scrollen sichtbar – z.B. die Regel-Werkzeugleiste bei langen Listen */
+.sticky-top {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--bg);
+  padding-top: .5rem; margin-top: -.5rem;
+  padding-bottom: .75rem; margin-bottom: .75rem;
+  border-bottom: 1px solid var(--border);
+}
+
 .nav a {
   display: block; padding: .45rem .6rem; border-radius: 8px; color: var(--text);
 }
