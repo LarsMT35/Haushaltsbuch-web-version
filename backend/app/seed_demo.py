@@ -32,7 +32,7 @@ from .models import (
     User,
 )
 from .security import hash_password
-from .services.transfers import auto_link_transfers
+from .services.transfers import auto_link_transfers, auto_mirror_category_transfers
 
 DEMO_GIRO_IBAN = "DE12500105170648489890"
 DEMO_TAGESGELD_IBAN = "DE44500105170912345678"
@@ -72,7 +72,12 @@ def run(db: Session) -> None:
     gemeinsam = Account(name="Gemeinsames Konto (Demo)", type="giro", bank="Musterbank",
                         iban=DEMO_GEMEINSAM_IBAN, opening_balance=Decimal("1200.00"),
                         opening_balance_date=start)
-    db.add_all([giro, tagesgeld, bargeld, gemeinsam])
+    # Kein eigener Bank-Feed (kein CSV-Import), nur die automatischen
+    # Gegenbuchungen der Sparplan-Kategorie (v1.3b) – zeigt, dass "wie
+    # Umbuchung behandeln" mit Zielkonto den Saldo tatsächlich fortschreibt.
+    depot = Account(name="Depot (Demo)", type="depot", bank="Online Broker",
+                    opening_balance=Decimal("0.00"), opening_balance_date=start)
+    db.add_all([giro, tagesgeld, bargeld, gemeinsam, depot])
     db.flush()
 
     db.add_all([
@@ -80,6 +85,7 @@ def run(db: Session) -> None:
         AccountRole(user_id=admin.id, account_id=tagesgeld.id, role="owner"),
         AccountRole(user_id=admin.id, account_id=bargeld.id, role="owner"),
         AccountRole(user_id=admin.id, account_id=gemeinsam.id, role="owner"),
+        AccountRole(user_id=admin.id, account_id=depot.id, role="owner"),
     ])
 
     # Zweiter Demo-Nutzer, um Mehrbenutzer-/Rollenmodell zu zeigen (4.1)
@@ -109,10 +115,13 @@ def run(db: Session) -> None:
     kapitalertraege = _cat(db, "Kapitalerträge")
     sonstiges = _cat(db, "Sonstiges")
 
-    # "Kapitalerträge" hier als Demo für "wie Umbuchung behandeln" (v1.3):
-    # Sparplan-Ausführungen ohne mitgeführtes Depot-Konto.
+    # "Kapitalerträge" hier als Demo für "wie Umbuchung behandeln" (v1.3)
+    # mit echtem Umbuchungs-Zielkonto (v1.3b): Sparplan-Ausführungen
+    # bekommen automatisch eine Gegenbuchung im Depot, dessen Saldo dadurch
+    # tatsächlich mitwächst.
     if kapitalertraege:
         kapitalertraege.is_transfer_like = True
+        kapitalertraege.transfer_target_account_id = depot.id
 
     rng = random.Random(42)  # reproduzierbare Demo-Daten
 
@@ -258,4 +267,24 @@ def run(db: Session) -> None:
 
     # Umbuchungserkennung für die per IBAN eindeutigen Paare (Giro<->Tagesgeld);
     # die Bargeldabhebung bleibt bewusst offen als Vorschlag zum Live-Vorführen.
-    auto_link_transfers(db, [giro.id, tagesgeld.id, bargeld.id, gemeinsam.id])
+    account_ids = [giro.id, tagesgeld.id, bargeld.id, gemeinsam.id, depot.id]
+    auto_link_transfers(db, account_ids)
+
+    # Die jüngste Sparplan-Buchung bleibt bewusst noch ohne Depot-Gegenbuchung,
+    # damit sich "Umbuchungen erkennen" live vorführen lässt (Depot-Saldo
+    # wächst sichtbar nach dem Klick, statt schon fertig verknüpft zu sein).
+    held_back = None
+    if kapitalertraege:
+        held_back = (db.query(Transaction)
+                     .filter(Transaction.account_id == giro.id,
+                            Transaction.category_id == kapitalertraege.id,
+                            Transaction.transfer_id.is_(None))
+                     .order_by(Transaction.booking_date.desc()).first())
+        if held_back:
+            held_back.category_id = None
+
+    auto_mirror_category_transfers(db, account_ids)
+
+    if held_back:
+        held_back.category_id = kapitalertraege.id
+        db.commit()

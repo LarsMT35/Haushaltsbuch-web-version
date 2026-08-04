@@ -19,7 +19,7 @@ from ..schemas import (
 from ..services.audit import log
 from ..services.csv_import import analyze_csv, parse_csv
 from ..services.rules_engine import categorize, load_rules
-from ..services.transfers import auto_link_transfers
+from ..services.transfers import auto_link_transfers, auto_mirror_category_transfers
 
 router = APIRouter(prefix="/imports", tags=["imports"])
 
@@ -185,7 +185,9 @@ def commit(payload: ImportCommitIn, user: User = Depends(get_current_user),
     db.commit()
 
     # Umbuchungserkennung über alle zugänglichen Konten (4.4)
-    auto_link_transfers(db, accessible_account_ids(db, user))
+    ids = accessible_account_ids(db, user)
+    auto_link_transfers(db, ids)
+    auto_mirror_category_transfers(db, ids)
     db.refresh(batch)
     return batch
 

@@ -20,8 +20,12 @@ def suggestions(user: User = Depends(get_current_user), db: Session = Depends(ge
 
 @router.post("/detect")
 def detect(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    linked = svc.auto_link_transfers(db, accessible_account_ids(db, user))
-    return {"linked": linked}
+    account_ids = accessible_account_ids(db, user)
+    linked = svc.auto_link_transfers(db, account_ids)
+    # Kategorien mit hinterlegtem Umbuchungs-Zielkonto (z.B. Depot ohne
+    # eigenen Bank-Feed) bekommen hier ebenfalls ihre Gegenbuchung erzeugt
+    mirrored = svc.auto_mirror_category_transfers(db, account_ids)
+    return {"linked": linked, "mirrored": mirrored}
 
 
 @router.post("/link")

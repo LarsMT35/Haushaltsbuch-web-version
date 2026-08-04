@@ -78,11 +78,16 @@ def summary(date_from: date | None = None, date_to: date | None = None,
         cat = categories.get(t.category_id) if t.category_id else None
         if t.transfer_id or (cat and cat.is_transfer_like):
             # Echte Umbuchung ODER Kategorie "wie Umbuchung behandeln" (z.B.
-            # Sparplan-Ausführung ohne mitgeführtes Depot-Konto): nicht in
-            # Einnahmen/Ausgaben, aber Sparkonten-Bewegung (4.9). Bei
-            # Kategorie-Markierung unabhängig vom Kontotyp der zahlenden
-            # Seite, da das Ziel (z.B. Depot) oft gar nicht selbst geführt wird.
-            if (acc and acc.type in SAVINGS_TYPES) or (cat and cat.is_transfer_like):
+            # Sparplan-Ausführung): nicht in Einnahmen/Ausgaben, aber
+            # Sparkonten-Bewegung (4.9). Hat die Kategorie ein echtes
+            # Umbuchungs-Zielkonto hinterlegt (z.B. Depot, per
+            # "Umbuchungen erkennen" bereits gegengebucht), zählt nur noch
+            # die Zielkonto-Seite (acc.type in SAVINGS_TYPES) – sonst würde
+            # die zahlende UND die Depot-Seite gegeneinander aufheben.
+            # Ohne Zielkonto (alte Variante ohne Gegenbuchung) bleibt die
+            # zahlende Seite selbst der einzige verfügbare Beleg.
+            if (acc and acc.type in SAVINGS_TYPES) or (
+                    cat and cat.is_transfer_like and not cat.transfer_target_account_id):
                 savings[month] += t.amount_ref
             continue
         if t.amount_ref >= 0:

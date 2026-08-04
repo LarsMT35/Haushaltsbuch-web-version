@@ -147,7 +147,8 @@ async function detectTransfers() {
   error.value = ''; info.value = ''
   try {
     const r = await api.post('/transfers/detect')
-    info.value = `${r.linked} Umbuchung(en) automatisch verknüpft (IBAN-Beleg).`
+    info.value = `${r.linked} Umbuchung(en) automatisch verknüpft (IBAN-Beleg)` +
+      (r.mirrored ? `, ${r.mirrored} Gegenbuchung(en) in Umbuchungs-Zielkonten (z.B. Depot) angelegt.` : '.')
     await load()
     await refreshAccounts()
   } catch (e) { error.value = e.message }
@@ -166,7 +167,7 @@ function doExport() {
       <h1>Buchungen</h1>
       <div class="spacer"></div>
       <button @click="showManual = !showManual">+ Manuelle Buchung</button>
-      <button @click="detectTransfers" title="Sucht Umbuchungspaare mit IBAN-Beleg automatisch (4.4)">Umbuchungen erkennen</button>
+      <button @click="detectTransfers" title="Sucht Umbuchungspaare mit IBAN-Beleg automatisch und legt Gegenbuchungen für Kategorien mit Umbuchungs-Zielkonto an (z.B. Depot, 4.4)">Umbuchungen erkennen</button>
       <button @click="doExport">Export CSV</button>
     </div>
 

@@ -109,6 +109,31 @@ def test_category_export_import_preserves_transfer_like_flag(client, auth_header
     assert cat["is_transfer_like"] is False
 
 
+def test_category_export_import_preserves_transfer_target_account(client, auth_headers):
+    """Export referenziert das Zielkonto per Name (Prinzip 1, portabel
+    zwischen Installationen), Import löst es beim Einspielen wieder auf."""
+    h = auth_headers
+    depot = _account(client, h, "V13b-ExportDepot", type="depot")
+    cat = client.post("/api/v1/categories", headers=h, json={
+        "name": "V13b-ExportSparplan", "scope": "personal",
+        "transfer_target_account_id": depot["id"]}).json()
+
+    exported = client.get("/api/v1/categories/export", headers=h).json()
+    item = next(c for c in exported if c["name"] == "V13b-ExportSparplan")
+    assert item["transfer_target_account_name"] == "V13b-ExportDepot"
+
+    # auf einer "frischen" Installation ohne dieses Konto einspielen ->
+    # Kategorie wird trotzdem angelegt, nur ohne Zielkonto-Verknüpfung
+    item["name"] = "V13b-ExportSparplan-2"
+    item["transfer_target_account_name"] = "Unbekanntes Konto"
+    r = client.post("/api/v1/categories/import", headers=h, json=[item])
+    assert r.json()["created"] == 1
+    cats = client.get("/api/v1/categories", headers=h).json()
+    cat2 = next(c for c in cats if c["name"] == "V13b-ExportSparplan-2")
+    assert cat2["transfer_target_account_id"] is None
+    assert cat2["is_transfer_like"] is True  # Flag selbst bleibt erhalten
+
+
 def test_dashboard_summary_multi_account_and_category_filter(client, auth_headers):
     """Mehrere Konten UND mehrere Kategorien gleichzeitig auswählbar (Startseite-Filter)."""
     h = auth_headers
@@ -199,3 +224,90 @@ def test_transfers_detect_endpoint_manual_trigger(client, auth_headers):
     # erneuter Aufruf: bereits verknüpftes Paar wird nicht doppelt gezählt (idempotent)
     r = client.post("/api/v1/transfers/detect", headers=h)
     assert r.json()["linked"] == 0
+
+
+def test_transfer_target_account_creates_real_mirror_booking(client, auth_headers):
+    """v1.3b: Kategorie mit hinterlegtem Umbuchungs-Zielkonto (z.B. Depot ohne
+    eigenen Bank-Feed) erzeugt eine echte Gegenbuchung dort, der Saldo des
+    Zielkontos passt sich an, und die Sparkonten-Bewegung zählt nicht mehr
+    doppelt (zahlende + Depot-Seite)."""
+    h = auth_headers
+    giro = _account(client, h, "V13b-Mirror-Giro")
+    depot = _account(client, h, "V13b-Mirror-Depot", type="depot")
+
+    cat = client.post("/api/v1/categories", headers=h, json={
+        "name": "V13b-Sparplan", "scope": "personal",
+        "transfer_target_account_id": depot["id"]}).json()
+    # ein Zielkonto macht die Kategorie implizit "wie Umbuchung" (ohne extra Flag)
+    assert cat["is_transfer_like"] is True
+    assert cat["transfer_target_account_id"] == depot["id"]
+
+    # die Gegenbuchung entsteht schon automatisch beim Anlegen der manuellen
+    # Buchung (wie bei einer normalen Umbuchung, 4.4) – kein manueller
+    # Trigger nötig, genau wie bei auto_link_transfers
+    client.post("/api/v1/transactions", headers=h, json={
+        "account_id": giro["id"], "booking_date": "2026-07-12", "amount": "-150.00",
+        "counterparty": "Broker", "purpose": "Ausführung Sparplan", "category_id": cat["id"]})
+
+    # Saldo des Depots wächst durch die automatische Gegenbuchung mit (4.9)
+    accs = client.get("/api/v1/accounts", headers=h).json()
+    assert float(next(a for a in accs if a["id"] == depot["id"])["balance"]) == 150.0
+
+    # in der Buchungsliste des Depots taucht die Gegenbuchung real auf und
+    # ist als Umbuchung verknüpft
+    depot_txs = client.get("/api/v1/transactions", headers=h,
+                           params={"account_id": depot["id"]}).json()["items"]
+    assert len(depot_txs) == 1
+    assert depot_txs[0]["amount"] == "150.00"
+    assert depot_txs[0]["transfer_id"] is not None
+
+    # Sparkonten-Bewegung zählt jetzt nur noch einmal (Depot-Seite), nicht
+    # mehr zusätzlich die zahlende Giro-Seite gegenläufig dazu
+    s = client.get("/api/v1/dashboard/summary", headers=h, params={
+        "date_from": "2026-07-01", "date_to": "2026-07-31",
+        "account_ids": [giro["id"], depot["id"]]}).json()
+    july = next(m for m in s["savings_movement"] if m["month"] == "2026-07")
+    assert july["value"] == 150.0
+
+    # manueller Button "Umbuchungen erkennen" bleibt idempotent (relevant für
+    # Altbestände oder rückwirkend per Regel gesetzte Kategorien, die keinen
+    # Erstellungs-Hook durchlaufen haben) – keine doppelte Gegenbuchung
+    r = client.post("/api/v1/transfers/detect", headers=h)
+    assert r.json()["mirrored"] == 0
+    depot_txs = client.get("/api/v1/transactions", headers=h,
+                           params={"account_id": depot["id"]}).json()["items"]
+    assert len(depot_txs) == 1
+
+
+def test_transfer_target_account_backfills_existing_transactions(client, auth_headers):
+    """Der eigentlich gemeldete Fall: die Kategorie war schon vorher 'wie
+    Umbuchung' auf Altbestand gesetzt, erst danach wird ein Zielkonto
+    ergänzt – 'Umbuchungen erkennen' muss die Altbuchungen nachträglich
+    ins Depot gegenbuchen, nicht nur künftige."""
+    h = auth_headers
+    giro = _account(client, h, "V13b-Backfill-Giro")
+    depot = _account(client, h, "V13b-Backfill-Depot", type="depot")
+
+    cat = client.post("/api/v1/categories", headers=h, json={
+        "name": "V13b-Backfill-Sparplan", "scope": "personal", "is_transfer_like": True}).json()
+
+    for d, amount in [("2026-05-12", "-100.00"), ("2026-06-12", "-120.00"), ("2026-07-12", "-140.00")]:
+        client.post("/api/v1/transactions", headers=h, json={
+            "account_id": giro["id"], "booking_date": d, "amount": amount,
+            "counterparty": "Broker", "purpose": "Sparplan", "category_id": cat["id"]})
+
+    # noch kein Zielkonto -> keine Gegenbuchungen
+    assert client.get("/api/v1/transactions", headers=h,
+                      params={"account_id": depot["id"]}).json()["total"] == 0
+
+    r = client.put(f"/api/v1/categories/{cat['id']}", headers=h,
+                   json={"transfer_target_account_id": depot["id"]})
+    assert r.json()["transfer_target_account_id"] == depot["id"]
+
+    r = client.post("/api/v1/transfers/detect", headers=h)
+    assert r.json()["mirrored"] == 3
+
+    depot_page = client.get("/api/v1/transactions", headers=h, params={"account_id": depot["id"]}).json()
+    assert depot_page["total"] == 3
+    accs = client.get("/api/v1/accounts", headers=h).json()
+    assert float(next(a for a in accs if a["id"] == depot["id"])["balance"]) == 360.0

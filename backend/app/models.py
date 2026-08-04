@@ -126,6 +126,14 @@ class Category(Base):
     # Umbuchung (4.4) mangels Gegenbuchung nicht verknüpfbar ist, z.B.
     # Sparplan-Ausführungen ohne mitgeführtes Depot-Konto.
     is_transfer_like: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Optionales Zielkonto (z.B. ein manuell angelegtes Depot ohne eigenen
+    # Bank-Feed): ist es gesetzt, erzeugt die Umbuchungserkennung (4.4) für
+    # Buchungen dieser Kategorie automatisch eine echte Gegenbuchung dort und
+    # verknüpft beide als Umbuchung – dadurch wirkt sich "wie Umbuchung
+    # behandeln" auch auf den Saldo des Zielkontos aus, nicht nur auf die
+    # Dashboard-Auswertung der zahlenden Seite.
+    transfer_target_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accounts.id"), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     parent: Mapped["Category | None"] = relationship(remote_side=[id])

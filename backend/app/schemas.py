@@ -116,6 +116,7 @@ class CategoryOut(ORMModel):
     user_id: int | None
     is_fixed_cost: bool
     is_transfer_like: bool
+    transfer_target_account_id: int | None
     active: bool
 
 
@@ -126,6 +127,7 @@ class CategoryCreate(BaseModel):
     account_id: int | None = None
     is_fixed_cost: bool = False
     is_transfer_like: bool = False
+    transfer_target_account_id: int | None = None
 
 
 class CategoryUpdate(BaseModel):
@@ -133,6 +135,10 @@ class CategoryUpdate(BaseModel):
     parent_id: int | None = None
     is_fixed_cost: bool | None = None
     is_transfer_like: bool | None = None
+    # explizit übergeben (auch als null, um es zu löschen) -> siehe
+    # model_fields_set-Auswertung in update_category (sonst nicht von
+    # "nicht mitgeschickt" unterscheidbar wie bei den anderen Feldern)
+    transfer_target_account_id: int | None = None
     active: bool | None = None
 
 
@@ -593,6 +599,7 @@ class CategoryExportItem(BaseModel):
     account_name: str | None = None
     is_fixed_cost: bool
     is_transfer_like: bool = False
+    transfer_target_account_name: str | None = None
     active: bool
 
 

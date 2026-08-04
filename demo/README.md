@@ -9,7 +9,7 @@ Beim allerersten Start (`SEED_DEMO_DATA=true`, nur im Demo-Stack aktiv,
 siehe `backend/app/seed_demo.py`) wird die leere Datenbank mit einer
 realistischen ~6-Monats-Historie befüllt:
 
-- **4 Konten**: Girokonto, Tagesgeld, Bargeld, ein gemeinsames Konto
+- **5 Konten**: Girokonto, Tagesgeld, Bargeld, ein gemeinsames Konto, ein Depot
 - **2 Nutzer**: `test` (Eigentümer aller Konten) und `partner`/`partner123`
   (Leser auf dem gemeinsamen Konto) – zum Vorführen des Rollenmodells (4.1)
 - **~150 Buchungen**: Gehalt, Miete, Nebenkosten, Abos, Lebensmittel,
@@ -19,8 +19,12 @@ realistischen ~6-Monats-Historie befüllt:
 - Ein **Split-Beispiel**, ein **Tag** ("Urlaub 2026"), ein **Budget**
   (Lebensmittel), eine **wiederkehrende Kostenposition** (Netflix – bewusst
   noch nicht verknüpft, zum Live-Vorführen von „Erkennung ausführen")
-- Eine Kategorie ist als **„wie Umbuchung behandeln"** markiert
-  (Sparplan-Ausführungen, zeigt die v1.3-Funktion)
+- Die Kategorie **„Kapitalerträge"** ist als **„wie Umbuchung behandeln"**
+  markiert und hat das **Depot als Umbuchungs-Zielkonto** hinterlegt (v1.3b):
+  Sparplan-Ausführungen bekommen automatisch eine Gegenbuchung im Depot,
+  dessen Saldo dadurch tatsächlich mitwächst. Die jüngste Ausführung ist
+  bewusst noch nicht gegengebucht – Button **„Umbuchungen erkennen"** in der
+  Buchungsliste klicken, um live zu sehen, wie sich der Depot-Saldo erhöht.
 - **13 Kategorisierungsregeln** und **4 unzugeordnete Buchungen** (zeigt die
   „Handlungsbedarf"-Kachel)
 

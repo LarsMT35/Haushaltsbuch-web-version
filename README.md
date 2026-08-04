@@ -142,6 +142,21 @@ automatisch aus.
   Einzahler gruppiert (aus dem Gegenpartei-Feld des Bank-Exports), als
   gestapeltes Balkendiagramm im Dashboard
 
+### v1.3 – Kategorien als Umbuchung
+
+- ✅ **Kategorie „wie Umbuchung behandeln“**: Buchungen zählen nicht als
+  Einnahme/Ausgabe, sondern wie eine Sparkonten-Bewegung (4.9) – für Fälle,
+  in denen eine „echte“ Umbuchung (4.4) mangels Gegenbuchung nicht
+  verknüpfbar ist, z.B. Sparplan-Ausführungen.
+- ✅ **Optionales Umbuchungs-Zielkonto je Kategorie** (z.B. ein manuell
+  angelegtes Depot ohne eigenen Bank-Feed): „Umbuchungen erkennen“ legt für
+  noch unverknüpfte Buchungen dieser Kategorie automatisch die Gegenbuchung
+  im Zielkonto an und verknüpft beide als echte Umbuchung – der Saldo des
+  Zielkontos wächst dadurch tatsächlich mit, nicht nur die
+  Dashboard-Auswertung der zahlenden Seite.
+- ✅ Dashboard-Filter: mehrere Konten UND mehrere Kategorien gleichzeitig
+  kombinierbar, Zeitraum defaultet auf den letzten abgeschlossenen Monat
+
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).
 

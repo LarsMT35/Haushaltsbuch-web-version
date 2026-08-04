@@ -7,7 +7,7 @@ const user = inject('user')
 const categories = ref([])
 const error = ref('')
 const form = ref({ name: '', scope: 'personal', account_id: null, parent_id: null,
-                  is_fixed_cost: false, is_transfer_like: false })
+                  is_fixed_cost: false, is_transfer_like: false, transfer_target_account_id: null })
 const mergeSource = ref(null)
 const mergeTarget = ref('')
 const info = ref('')
@@ -55,8 +55,10 @@ async function create() {
   try {
     await api.post('/categories', { ...form.value,
       account_id: form.value.scope === 'account' ? form.value.account_id : null,
-      parent_id: form.value.parent_id || null })
+      parent_id: form.value.parent_id || null,
+      transfer_target_account_id: form.value.is_transfer_like ? (form.value.transfer_target_account_id || null) : null })
     form.value.name = ''
+    form.value.transfer_target_account_id = null
     await load()
   } catch (e) { error.value = e.message }
 }
@@ -72,9 +74,24 @@ async function toggleFixed(cat) {
 async function toggleTransferLike(cat) {
   error.value = ''
   try {
-    await api.put(`/categories/${cat.id}`, { is_transfer_like: !cat.is_transfer_like })
+    const next = !cat.is_transfer_like
+    // Zielkonto ergibt ohne "wie Umbuchung" keinen Sinn mehr -> mit abwählen
+    await api.put(`/categories/${cat.id}`, { is_transfer_like: next,
+      ...(next ? {} : { transfer_target_account_id: null }) })
     await load()
   } catch (e) { error.value = e.message }
+}
+
+async function setTransferTarget(cat, accountId) {
+  error.value = ''
+  try {
+    await api.put(`/categories/${cat.id}`, { transfer_target_account_id: accountId ? Number(accountId) : null })
+    await load()
+  } catch (e) { error.value = e.message }
+}
+
+function accountName(id) {
+  return accounts.value.find((a) => a.id === id)?.name || ''
 }
 
 async function rename(cat) {
@@ -135,8 +152,13 @@ function parentName(id) {
             <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select></div>
         <div><label>Fixkosten</label><input type="checkbox" v-model="form.is_fixed_cost" /></div>
-        <div><label title="Zählt nicht als Einnahme/Ausgabe, sondern wie eine Sparkonten-Bewegung – z.B. für Sparplan-Ausführungen ohne mitgeführtes Depot-Konto">Wie Umbuchung behandeln</label>
+        <div><label title="Zählt nicht als Einnahme/Ausgabe, sondern wie eine Sparkonten-Bewegung – z.B. für Sparplan-Ausführungen">Wie Umbuchung behandeln</label>
           <input type="checkbox" v-model="form.is_transfer_like" /></div>
+        <div v-if="form.is_transfer_like"><label title="Optional: echtes Konto (z.B. ein manuell angelegtes Depot), in das automatisch die Gegenbuchung eingetragen wird – Saldo passt sich an">Umbuchungs-Zielkonto</label>
+          <select v-model="form.transfer_target_account_id">
+            <option :value="null">– nur Auswertung, kein Zielkonto –</option>
+            <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+          </select></div>
         <button class="primary" :disabled="!form.name" @click="create">Anlegen</button>
       </div>
     </div>
@@ -168,10 +190,19 @@ function parentName(id) {
             <td>
               <span v-if="c.is_fixed_cost" class="badge">fix</span>
               <span v-if="c.is_transfer_like" class="badge gray" title="Zählt wie eine Umbuchung, nicht als Ausgabe">wie Umbuchung</span>
+              <span v-if="c.transfer_target_account_id" class="badge gray"
+                    title="Gegenbuchung wird automatisch in dieses Konto eingetragen (Saldo-Wirkung), per 'Umbuchungen erkennen' anstoßbar">
+                → {{ accountName(c.transfer_target_account_id) }}</span>
             </td>
             <td style="text-align: right; white-space: nowrap">
               <button @click="toggleFixed(c)">{{ c.is_fixed_cost ? 'fix ✕' : 'als fix markieren' }}</button>
               <button @click="toggleTransferLike(c)">{{ c.is_transfer_like ? 'Umbuchung ✕' : 'wie Umbuchung' }}</button>
+              <select v-if="c.is_transfer_like" :value="c.transfer_target_account_id ?? ''"
+                      title="Umbuchungs-Zielkonto (z.B. Depot) – automatische Gegenbuchung"
+                      @change="setTransferTarget(c, $event.target.value)">
+                <option value="">kein Zielkonto</option>
+                <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+              </select>
               <button @click="rename(c)">Umbenennen</button>
               <button @click="mergeSource = c">Zusammenführen</button>
             </td>

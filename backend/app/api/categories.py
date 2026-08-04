@@ -45,6 +45,10 @@ def create_category(payload: CategoryCreate, user: User = Depends(get_current_us
     if payload.scope not in ("global", "account", "personal"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekannter Geltungsbereich")
     cat = Category(**payload.model_dump())
+    if cat.transfer_target_account_id:
+        # ein Zielkonto macht eine Kategorie implizit "wie Umbuchung" (4.4/4.9)
+        require_account_access(db, user, cat.transfer_target_account_id, "editor")
+        cat.is_transfer_like = True
     if payload.scope == "account":
         if not payload.account_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Kontobezogene Kategorie braucht ein Konto")
@@ -79,9 +83,19 @@ def _editable_category(db: Session, user: User, category_id: int) -> Category:
 def update_category(category_id: int, payload: CategoryUpdate,
                     user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     cat = _editable_category(db, user, category_id)
-    for field, value in payload.model_dump(exclude_none=True).items():
+    data = payload.model_dump(exclude_none=True, exclude={"transfer_target_account_id"})
+    for field, value in data.items():
         setattr(cat, field, value)
-    log(db, user.id, "category", cat.id, "update", payload.model_dump(exclude_none=True, mode="json"))
+    # eigenes Feld, da null hier "Zielkonto entfernen" bedeutet statt
+    # "nicht mitgeschickt" (im Unterschied zu den übrigen, per exclude_none
+    # behandelten Feldern)
+    if "transfer_target_account_id" in payload.model_fields_set:
+        if payload.transfer_target_account_id is not None:
+            require_account_access(db, user, payload.transfer_target_account_id, "editor")
+            cat.is_transfer_like = True  # ein Zielkonto macht die Kategorie implizit "wie Umbuchung"
+        cat.transfer_target_account_id = payload.transfer_target_account_id
+        data["transfer_target_account_id"] = payload.transfer_target_account_id
+    log(db, user.id, "category", cat.id, "update", data)
     db.commit()
     return cat
 
@@ -114,12 +128,15 @@ def export_categories(user: User = Depends(get_current_user), db: Session = Depe
     cats = visible_categories_query(db, user).all()
     by_id = {c.id: c for c in cats}
     account_ids = {c.account_id for c in cats if c.account_id}
+    account_ids |= {c.transfer_target_account_id for c in cats if c.transfer_target_account_id}
     account_names = {a.id: a.name for a in db.query(Account).filter(Account.id.in_(account_ids)).all()} if account_ids else {}
     return [
         CategoryExportItem(
             name=c.name, parent_name=by_id[c.parent_id].name if c.parent_id in by_id else None,
             scope=c.scope, account_name=account_names.get(c.account_id),
-            is_fixed_cost=c.is_fixed_cost, is_transfer_like=c.is_transfer_like, active=c.active,
+            is_fixed_cost=c.is_fixed_cost, is_transfer_like=c.is_transfer_like,
+            transfer_target_account_name=account_names.get(c.transfer_target_account_id),
+            active=c.active,
         )
         for c in cats
     ]
@@ -138,6 +155,8 @@ def import_categories(payload: list[CategoryExportItem], user: User = Depends(ge
     created = updated_fixed = skipped_no_permission = skipped_no_account = skipped_existing = 0
     for item in payload:
         key = (item.name, item.scope)
+        target_account = accounts_by_name.get(item.transfer_target_account_name or "")
+        target_account_id = target_account.id if target_account else None
         if key in existing:
             cat = existing[key]
             changed = False
@@ -146,6 +165,12 @@ def import_categories(payload: list[CategoryExportItem], user: User = Depends(ge
                 changed = True
             if cat.is_transfer_like != item.is_transfer_like:
                 cat.is_transfer_like = item.is_transfer_like
+                changed = True
+            # Zielkonto nur übernehmen, wenn es (unter diesem Namen) existiert
+            # -- sonst bestehende Verknüpfung nicht stillschweigend loeschen,
+            # z.B. weil das Depot auf dieser Installation anders heisst.
+            if target_account_id and cat.transfer_target_account_id != target_account_id:
+                cat.transfer_target_account_id = target_account_id
                 changed = True
             if changed:
                 updated_fixed += 1
@@ -165,6 +190,7 @@ def import_categories(payload: list[CategoryExportItem], user: User = Depends(ge
         cat = Category(name=item.name, scope=item.scope, account_id=account_id,
                        user_id=user.id if item.scope == "personal" else None,
                        is_fixed_cost=item.is_fixed_cost, is_transfer_like=item.is_transfer_like,
+                       transfer_target_account_id=target_account_id,
                        active=item.active)
         db.add(cat)
         db.flush()
