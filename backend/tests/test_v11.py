@@ -36,7 +36,7 @@ def test_splits(client, auth_headers):
     # Dashboard: Split zählt anteilig auf beide Kategorien
     s = client.get("/api/v1/dashboard/summary", headers=h,
                    params={"date_from": "2026-07-01", "date_to": "2026-07-31",
-                           "account_id": acc["id"]}).json()
+                           "account_ids": [acc["id"]]}).json()
     by_cat = {c["category_name"]: c["value"] for c in s["by_category"]}
     assert by_cat["Lebensmittel"] == 30.0
     assert by_cat["Drogerie"] == 20.0
@@ -82,7 +82,7 @@ def test_budget_ampel(client, auth_headers):
         "account_id": acc["id"], "booking_date": "2026-07-10", "amount": "-85.00",
         "counterparty": "Pizzeria", "category_id": cats["Restaurant & Lieferdienst"]["id"]})
 
-    s = client.get("/api/v1/budgets/status", headers=h, params={"month": "2026-07"}).json()
+    s = client.get("/api/v1/budgets/status", headers=h, params={"month": "2026-07", "account_id": acc["id"]}).json()
     row = next(r for r in s["rows"] if r["category_name"] == "Restaurant & Lieferdienst")
     assert row["spent"] == 85.0 and row["ampel"] == "gelb"
 
@@ -90,8 +90,8 @@ def test_budget_ampel(client, auth_headers):
     client.post("/api/v1/budgets", headers=h, json={
         "category_id": cats["Restaurant & Lieferdienst"]["id"], "amount": "200.00",
         "valid_from": "2026-08-01"})
-    s7 = client.get("/api/v1/budgets/status", headers=h, params={"month": "2026-07"}).json()
-    s8 = client.get("/api/v1/budgets/status", headers=h, params={"month": "2026-08"}).json()
+    s7 = client.get("/api/v1/budgets/status", headers=h, params={"month": "2026-07", "account_id": acc["id"]}).json()
+    s8 = client.get("/api/v1/budgets/status", headers=h, params={"month": "2026-08", "account_id": acc["id"]}).json()
     get = lambda s: next(r for r in s["rows"] if r["category_name"] == "Restaurant & Lieferdienst")
     assert get(s7)["budget"] == 100.0
     assert get(s8)["budget"] == 200.0 and get(s8)["ampel"] == "gruen"
@@ -100,7 +100,7 @@ def test_budget_ampel(client, auth_headers):
     r = client.put("/api/v1/budgets/thresholds", headers=h,
                    json={"green_below": 50, "red_from": 84})
     assert r.status_code == 200
-    s = client.get("/api/v1/budgets/status", headers=h, params={"month": "2026-07"}).json()
+    s = client.get("/api/v1/budgets/status", headers=h, params={"month": "2026-07", "account_id": acc["id"]}).json()
     assert get(s)["ampel"] == "rot"
     client.put("/api/v1/budgets/thresholds", headers=h, json={"green_below": 80, "red_from": 98})
 

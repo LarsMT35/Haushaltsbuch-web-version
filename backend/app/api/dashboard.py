@@ -8,7 +8,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -36,7 +36,8 @@ SAVINGS_TYPES = {"tagesgeld", "sparbuch", "depot"}
 
 @router.get("/summary", response_model=DashboardSummary)
 def summary(date_from: date | None = None, date_to: date | None = None,
-            account_id: int | None = None, category_id: int | None = None,
+            account_ids: list[int] | None = Query(None),
+            category_ids: list[int] | None = Query(None),
             user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if date_to is None:
         date_to = date.today()
@@ -44,8 +45,8 @@ def summary(date_from: date | None = None, date_to: date | None = None,
         date_from = (date_to.replace(day=1) - timedelta(days=365)).replace(day=1)
 
     ids = accessible_account_ids(db, user)
-    if account_id is not None and account_id in ids:
-        filter_ids = [account_id]
+    if account_ids:
+        filter_ids = [aid for aid in account_ids if aid in ids] or ids
     else:
         filter_ids = ids
 
@@ -57,8 +58,9 @@ def summary(date_from: date | None = None, date_to: date | None = None,
                    Transaction.booking_date >= date_from,
                    Transaction.booking_date <= date_to)
            .all())
-    if category_id is not None:
-        txs = [t for t in txs if t.category_id == category_id]
+    if category_ids:
+        cat_id_set = set(category_ids)
+        txs = [t for t in txs if t.category_id in cat_id_set]
 
     income = Decimal("0")
     expenses = Decimal("0")
@@ -148,6 +150,7 @@ def _month_range(date_from: date, date_to: date) -> list[str]:
 
 @router.get("/networth", response_model=NetWorthOut)
 def networth(date_from: date | None = None, date_to: date | None = None,
+             account_ids: list[int] | None = Query(None),
              user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Vermögensverlauf pro Konto als Monatsend-Saldo (4.9) – berechnet aus
     Anfangssaldo + Buchungen (Prinzip 3)."""
@@ -158,7 +161,8 @@ def networth(date_from: date | None = None, date_to: date | None = None,
     months = _month_range(date_from, date_to)
 
     ids = accessible_account_ids(db, user)
-    accounts = db.query(Account).filter(Account.id.in_(ids), Account.archived.is_(False)).all()
+    filter_ids = [aid for aid in account_ids if aid in ids] if account_ids else ids
+    accounts = db.query(Account).filter(Account.id.in_(filter_ids or ids), Account.archived.is_(False)).all()
     series = []
     totals = [Decimal("0")] * len(months)
     for a in accounts:
@@ -186,7 +190,7 @@ def networth(date_from: date | None = None, date_to: date | None = None,
 
 @router.get("/savings-rate", response_model=SavingsRateOut)
 def savings_rate(date_from: date | None = None, date_to: date | None = None,
-                 account_id: int | None = None,
+                 account_ids: list[int] | None = Query(None),
                  user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Sparquote im Zeitverlauf (4.9): Bilanz ÷ Einnahmen je Monat, ohne Umbuchungen
     (echte wie auch Kategorien mit "wie Umbuchung behandeln")."""
@@ -195,7 +199,7 @@ def savings_rate(date_from: date | None = None, date_to: date | None = None,
     if date_from is None:
         date_from = date_to.replace(day=1).replace(year=date_to.year - 1)
     ids = accessible_account_ids(db, user)
-    filter_ids = [account_id] if account_id is not None and account_id in ids else ids
+    filter_ids = ([aid for aid in account_ids if aid in ids] or ids) if account_ids else ids
     transfer_like_ids = {cid for (cid,) in db.query(Category.id).filter(Category.is_transfer_like.is_(True)).all()}
     txs = (db.query(Transaction)
            .filter(Transaction.account_id.in_(filter_ids),
@@ -223,13 +227,15 @@ def savings_rate(date_from: date | None = None, date_to: date | None = None,
 
 
 @router.get("/year-comparison", response_model=YearComparisonOut)
-def year_comparison(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def year_comparison(account_ids: list[int] | None = Query(None),
+                    user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Jahresvergleich der Ausgaben pro Kategorie (4.9) – möglich durch die
     durchgehende Historie ohne Jahresschnitt. Kategorien mit "wie Umbuchung
     behandeln" zählen hier nicht als Ausgabe, wie echte Umbuchungen auch."""
     ids = accessible_account_ids(db, user)
+    filter_ids = ([aid for aid in account_ids if aid in ids] or ids) if account_ids else ids
     txs = (db.query(Transaction)
-           .filter(Transaction.account_id.in_(ids), Transaction.transfer_id.is_(None))
+           .filter(Transaction.account_id.in_(filter_ids), Transaction.transfer_id.is_(None))
            .all())
     all_categories = db.query(Category).all()
     categories = {c.id: c.name for c in all_categories}

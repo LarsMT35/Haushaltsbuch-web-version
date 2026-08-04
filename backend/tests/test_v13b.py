@@ -26,7 +26,7 @@ def test_transfer_like_category_excluded_from_income_expense(client, auth_header
         "counterparty": "Supermarkt", "purpose": "Einkauf"})
 
     s = client.get("/api/v1/dashboard/summary", headers=h, params={
-        "date_from": "2026-07-01", "date_to": "2026-07-31", "account_id": giro["id"]}).json()
+        "date_from": "2026-07-01", "date_to": "2026-07-31", "account_ids": [giro["id"]]}).json()
     # nur die normale Ausgabe zählt als Ausgabe, nicht die Sparplan-Buchung
     assert s["expenses"] == 30.0
     # dafür zählt sie als Sparkonten-Bewegung
@@ -82,7 +82,7 @@ def test_transfer_like_category_excluded_from_savings_rate_and_year_comparison(c
 
     sr = client.get("/api/v1/dashboard/savings-rate", headers=h,
                     params={"date_from": "2026-07-01", "date_to": "2026-07-31",
-                           "account_id": giro["id"]}).json()
+                           "account_ids": [giro["id"]]}).json()
     idx = sr["months"].index("2026-07")
     assert sr["expenses"][idx] == 0.0  # Sparplan-Buchung nicht als Ausgabe
 
@@ -107,3 +107,48 @@ def test_category_export_import_preserves_transfer_like_flag(client, auth_header
     cats = client.get("/api/v1/categories", headers=h).json()
     cat = next(c for c in cats if c["name"] == "V13b-ExportTest")
     assert cat["is_transfer_like"] is False
+
+
+def test_dashboard_summary_multi_account_and_category_filter(client, auth_headers):
+    """Mehrere Konten UND mehrere Kategorien gleichzeitig auswählbar (Startseite-Filter)."""
+    h = auth_headers
+    a1 = _account(client, h, "V13b-Multi-A")
+    a2 = _account(client, h, "V13b-Multi-B")
+    a3 = _account(client, h, "V13b-Multi-C")
+    cats = {c["name"]: c for c in client.get("/api/v1/categories", headers=h).json()}
+    lebensmittel = cats["Lebensmittel"]["id"]
+    drogerie = cats["Drogerie"]["id"]
+    elektronik = cats["Elektronik"]["id"]
+
+    for acc, cat_id, amount in [
+        (a1, lebensmittel, "-10.00"), (a2, drogerie, "-20.00"),
+        (a3, elektronik, "-40.00"), (a1, elektronik, "-5.00"),
+    ]:
+        client.post("/api/v1/transactions", headers=h, json={
+            "account_id": acc["id"], "booking_date": "2026-07-10", "amount": amount,
+            "counterparty": "Test", "category_id": cat_id})
+
+    # nur A1+A2, nur Lebensmittel+Drogerie -> A3 und Elektronik-Buchung auf A1 raus
+    s = client.get("/api/v1/dashboard/summary", headers=h, params={
+        "date_from": "2026-07-01", "date_to": "2026-07-31",
+        "account_ids": [a1["id"], a2["id"]], "category_ids": [lebensmittel, drogerie]}).json()
+    assert round(s["expenses"], 2) == 30.0
+    names = {c["category_name"] for c in s["by_category"]}
+    assert names == {"Lebensmittel", "Drogerie"}
+
+
+def test_dashboard_networth_and_year_comparison_multi_account_filter(client, auth_headers):
+    h = auth_headers
+    a1 = _account(client, h, "V13b-NW-A", opening_balance="100.00", opening_balance_date="2026-01-01")
+    a2 = _account(client, h, "V13b-NW-B", opening_balance="200.00", opening_balance_date="2026-01-01")
+
+    nw_all = client.get("/api/v1/dashboard/networth", headers=h,
+                        params={"date_from": "2026-01-01", "date_to": "2026-01-31"}).json()
+    names_all = {s["name"] for s in nw_all["series"]}
+    assert "V13b-NW-A" in names_all and "V13b-NW-B" in names_all
+
+    nw_filtered = client.get("/api/v1/dashboard/networth", headers=h,
+                             params={"date_from": "2026-01-01", "date_to": "2026-01-31",
+                                    "account_ids": [a1["id"]]}).json()
+    names_filtered = {s["name"] for s in nw_filtered["series"]}
+    assert names_filtered == {"V13b-NW-A"}

@@ -19,6 +19,9 @@ async def lifespan(app: FastAPI):
     from . import seed
     with SessionLocal() as db:
         seed.run_all(db)
+        if settings.seed_demo_data:
+            from . import seed_demo
+            seed_demo.run(db)
     yield
 
 

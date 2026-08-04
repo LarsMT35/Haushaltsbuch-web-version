@@ -47,13 +47,18 @@ Rücksicherung mit `scripts/restore.sh <dump.sql.gz>` mindestens einmal testen.
 ### Demo-Instanz zum Zeigen/Testen
 
 Läuft parallel zu einer produktiven Installation, komplett eigene Datenbank,
-kein Risiko für echte Daten:
+kein Risiko für echte Daten. Wird beim ersten Start automatisch mit
+Testkonten, ~150 Buchungen und Beispiel-Regeln/-Budgets befüllt – siehe
+[`demo/README.md`](demo/README.md) für Details:
 
 ```bash
 scripts/demo-up.sh      # startet auf Port 8181, Login test/test
 scripts/demo-down.sh    # stoppen (Demodaten bleiben)
-scripts/demo-down.sh --reset   # stoppen + Demodaten löschen
+scripts/demo-down.sh --reset   # stoppen + Demodaten löschen (beim nächsten Start neu befüllt)
 ```
+
+Für den Live-Import-Ablauf liegt eine passende Beispiel-CSV bereit:
+[`demo/beispiel_import_sparkasse.csv`](demo/beispiel_import_sparkasse.csv).
 
 ## Entwicklung
 

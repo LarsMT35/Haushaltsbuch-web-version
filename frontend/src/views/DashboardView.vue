@@ -11,8 +11,18 @@ const yearComp = ref(null)
 const recurringStatus = ref(null)
 const deposits = ref(null)
 const categories = ref([])
-// Filter-Chips: eine Auswahl filtert alle Kacheln gleichzeitig (4.9.1)
-const filter = ref({ account_id: '', category_id: '', date_from: '', date_to: '' })
+// Filter-Chips: mehrere Konten UND mehrere Kategorien gleichzeitig wählbar,
+// alle Auswahlen filtern zusammen alle Kacheln (4.9.1)
+const filter = ref({ account_ids: [], category_ids: [], date_from: '', date_to: '' })
+
+function accountLabel() {
+  const n = filter.value.account_ids.length
+  return n ? `Konten (${n})` : 'Alle Konten'
+}
+function categoryLabel() {
+  const n = filter.value.category_ids.length
+  return n ? `Kategorien (${n})` : 'Alle Kategorien'
+}
 
 // Kachel-Registry: eine neue Auswertung ist ein neuer Eintrag, kein Layout-Umbau (4.9.1)
 const TILES = [
@@ -47,14 +57,19 @@ async function loadDeposits() {
 }
 
 async function load() {
-  const params = {}
-  for (const [k, v] of Object.entries(filter.value)) if (v) params[k] = v
-  const range = { date_from: params.date_from, date_to: params.date_to }
+  const range = {}
+  if (filter.value.date_from) range.date_from = filter.value.date_from
+  if (filter.value.date_to) range.date_to = filter.value.date_to
+  const accountRange = { ...range }
+  if (filter.value.account_ids.length) accountRange.account_ids = filter.value.account_ids
+  const summaryParams = { ...accountRange }
+  if (filter.value.category_ids.length) summaryParams.category_ids = filter.value.category_ids
+
   ;[summary.value, networth.value, savingsRate.value, yearComp.value, recurringStatus.value] = await Promise.all([
-    api.get('/dashboard/summary', params),
-    api.get('/dashboard/networth', range),
-    api.get('/dashboard/savings-rate', { ...range, account_id: params.account_id }),
-    api.get('/dashboard/year-comparison'),
+    api.get('/dashboard/summary', summaryParams),
+    api.get('/dashboard/networth', accountRange),
+    api.get('/dashboard/savings-rate', accountRange),
+    api.get('/dashboard/year-comparison', filter.value.account_ids.length ? { account_ids: filter.value.account_ids } : {}),
     api.get('/recurring-items/status').then((r) => r.rows),
   ])
   await loadDeposits()
@@ -112,14 +127,31 @@ const palette = ['#2563eb', '#0f766e', '#b45309', '#7c3aed', '#be185d', '#0369a1
 <template>
   <div v-if="summary">
     <div class="chips">
-      <select v-model="filter.account_id">
-        <option value="">Alle Konten</option>
-        <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.name }}</option>
-      </select>
-      <select v-model="filter.category_id">
-        <option value="">Alle Kategorien</option>
-        <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
-      </select>
+      <!-- Mehrfachauswahl: mehrere Konten UND mehrere Kategorien gleichzeitig kombinierbar (4.9.1) -->
+      <details class="multi-select">
+        <summary>{{ accountLabel() }}</summary>
+        <div class="menu">
+          <label v-for="a in accounts" :key="a.id">
+            <input type="checkbox" :value="a.id" v-model="filter.account_ids" /> {{ a.name }}
+          </label>
+          <div class="actions">
+            <button type="button" @click="filter.account_ids = accounts.map((a) => a.id)">Alle</button>
+            <button type="button" @click="filter.account_ids = []">Keine</button>
+          </div>
+        </div>
+      </details>
+      <details class="multi-select">
+        <summary>{{ categoryLabel() }}</summary>
+        <div class="menu">
+          <label v-for="c in categories" :key="c.id">
+            <input type="checkbox" :value="c.id" v-model="filter.category_ids" /> {{ c.name }}
+          </label>
+          <div class="actions">
+            <button type="button" @click="filter.category_ids = categories.map((c) => c.id)">Alle</button>
+            <button type="button" @click="filter.category_ids = []">Keine</button>
+          </div>
+        </div>
+      </details>
       <!-- frei wählbarer Zeitraum statt festem Raster (4.9) -->
       <input type="date" v-model="filter.date_from" />
       <input type="date" v-model="filter.date_to" />
@@ -129,7 +161,7 @@ const palette = ['#2563eb', '#0f766e', '#b45309', '#7c3aed', '#be185d', '#0369a1
           + {{ t.label }}</button>
       </span>
     </div>
-    <p class="hint" style="margin-top: -0.5rem">Kacheln per Drag &amp; Drop anordnen, ✕ blendet aus – Layout wird pro Nutzer gespeichert.</p>
+    <p class="hint" style="margin-top: -0.5rem">Mehrere Konten/Kategorien gleichzeitig wählbar, kombinieren sich als Filter. Kacheln per Drag &amp; Drop anordnen, ✕ blendet aus – Layout wird pro Nutzer gespeichert.</p>
 
     <div class="grid">
       <div v-if="isVisible('income')" class="tile" v-bind="tileProps('income')">

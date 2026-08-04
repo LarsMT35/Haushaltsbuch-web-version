@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     # Referenzwährung für alle Auswertungen (4.3)
     reference_currency: str = "EUR"
     cors_origins: str = "http://localhost:5173"
+    # Nur für den Demo-Stack (docker-compose.demo.yml): befüllt eine leere DB
+    # beim ersten Start mit Testkonten/-buchungen, in Produktion immer aus.
+    seed_demo_data: bool = False
 
     class Config:
         env_file = ".env"

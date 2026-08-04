@@ -14,7 +14,14 @@ async function request(method, path, { json, form, params } = {}) {
   const url = new URL(BASE + path, window.location.origin)
   if (params) {
     for (const [k, v] of Object.entries(params)) {
-      if (v !== null && v !== undefined && v !== '') url.searchParams.set(k, v)
+      if (v === null || v === undefined || v === '') continue
+      // Arrays -> wiederholter Query-Key (FastAPI list[...]-Parameter, z.B.
+      // mehrere Konten/Kategorien gleichzeitig filtern)
+      if (Array.isArray(v)) {
+        for (const item of v) url.searchParams.append(k, item)
+      } else {
+        url.searchParams.set(k, v)
+      }
     }
   }
   const headers = {}
