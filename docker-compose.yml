@@ -28,6 +28,7 @@ services:
       # optionale lokale KI, leer = aus (siehe .env.example)
       OLLAMA_URL: ${OLLAMA_URL:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1}
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-120}
     depends_on:
       db:
         condition: service_healthy

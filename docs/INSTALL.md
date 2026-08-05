@@ -170,7 +170,82 @@ auf dem Proxmox-Host/im LXC genügt; die App bleibt unverändert.
 
 ---
 
-## 8. Fehlerbehebung
+## 8. Optional: lokale KI (Ollama) anbinden
+
+Rein optional. Ohne Konfiguration erscheint die Funktion gar nicht erst, die
+App bleibt vollständig nutzbar. Die KI schlägt Kategorien für Buchungen vor,
+bei denen keine Regel greift – **zugeordnet wird erst nach Bestätigung**.
+
+Läuft Ollama auf einem **anderen Rechner** als der Container (der Normalfall,
+z.B. auf dem PC mit der Grafikkarte), sind drei Dinge nötig:
+
+### a) Ollama nach außen hörbar machen
+
+Ollama lauscht standardmäßig **nur auf `127.0.0.1`** und ist damit vom
+Container aus nicht erreichbar. Das ist die mit Abstand häufigste
+Fehlerquelle.
+
+| System | Vorgehen |
+|---|---|
+| **Windows** | Einstellungen → *Umgebungsvariablen für dieses Konto* → neu: `OLLAMA_HOST` = `0.0.0.0` → Ollama über das Tray-Icon beenden und neu starten |
+| **Linux (systemd)** | `sudo systemctl edit ollama` → `[Service]` / `Environment="OLLAMA_HOST=0.0.0.0"` → `sudo systemctl daemon-reload && sudo systemctl restart ollama` |
+| **macOS** | `launchctl setenv OLLAMA_HOST 0.0.0.0`, danach Ollama neu starten |
+
+Prüfen – vom PC aus, aber mit der eigenen LAN-IP statt `localhost`:
+
+```bash
+curl http://192.168.1.50:11434/api/tags
+```
+
+Kommt hier nichts, blockiert meist noch die **Firewall**: Port `11434/TCP`
+für das lokale Netz freigeben (Windows-Firewall: eingehende Regel).
+
+### b) Modell bereitstellen
+
+```bash
+ollama pull qwen2.5:14b
+```
+
+### c) App konfigurieren
+
+In der `.env` neben der `docker-compose.yml` (auf dem Docker-Host, z.B. im LXC):
+
+```bash
+OLLAMA_URL=http://192.168.1.50:11434   # LAN-IP des PCs, NICHT localhost
+OLLAMA_MODEL=qwen2.5:14b
+OLLAMA_TIMEOUT=300                     # ohne GPU großzügig bemessen
+```
+
+`localhost` wäre hier der Container selbst – es muss die IP des PCs sein.
+Danach übernehmen:
+
+```bash
+docker compose up -d
+```
+
+### Kontrolle
+
+*Buchungen* öffnen: erscheint der Knopf **🤖 KI-Vorschläge**, steht die
+Verbindung. Ist er ausgegraut, nennt der Tooltip den Grund. Ausführlicher
+über den Statusendpunkt:
+
+| Antwort | Bedeutung |
+|---|---|
+| `enabled: false` | `OLLAMA_URL` nicht gesetzt oder Stack nicht neu gestartet |
+| `reachable: false` | `OLLAMA_HOST=0.0.0.0` fehlt, Firewall blockt, PC aus, oder falsche IP |
+| `detail: "Modell … nicht installiert"` | `ollama pull <modell>` auf dem PC nachholen |
+
+Ist der PC ausgeschaltet, bleibt der Knopf inaktiv – alles andere in der App
+funktioniert unverändert weiter.
+
+**Was übertragen wird:** ausschließlich Gegenpartei, Verwendungszweck und
+Betrag der noch nicht zugeordneten Buchungen, dazu die Namen der eigenen
+Kategorien. Keine IBANs, keine Kontonamen, keine Salden. Ziel ist
+ausschließlich die selbst konfigurierte Instanz im eigenen Netz.
+
+---
+
+## 9. Fehlerbehebung
 
 | Symptom | Prüfen |
 |---|---|
@@ -181,3 +256,5 @@ auf dem Proxmox-Host/im LXC genügt; die App bleibt unverändert.
 | Docker im LXC startet nicht | LXC braucht `features: nesting=1` (im Installer gesetzt) |
 | Version prüfen | `curl -s http://localhost:8080/api/health` |
 | Update erfolgreich, aber Änderungen fehlen im Browser | Browser-Cache auf `index.html` – einmal **Strg+Shift+R** (Hard-Refresh) oder Inkognito-Fenster. Seit dieser Version setzt nginx `no-cache` auf `index.html`, daher tritt es künftig nicht mehr auf. |
+| KI-Knopf fehlt oder ist ausgegraut | siehe [Abschnitt 8](#8-optional-lokale-ki-ollama-anbinden) – meist fehlt `OLLAMA_HOST=0.0.0.0` auf dem KI-Rechner |
+| Depot-Saldo zu hoch nach einem Import-Rollback | Altbestand vor v1.5.1: einmal *Buchungen → Umbuchungen erkennen* klicken, das räumt verwaiste Gegenbuchungen weg |
