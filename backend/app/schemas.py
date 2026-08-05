@@ -446,10 +446,24 @@ class NetWorthOut(BaseModel):
 
 
 class SavingsRateOut(BaseModel):
+    """Sparquote (4.9) in zwei Lesarten:
+
+    `saved`/`rate`      – was tatsächlich auf Sparkonten gelandet ist, netto
+                          inkl. aller Umbuchungen in beide Richtungen.
+    `surplus`/`surplus_rate` – was rechnerisch übrig blieb (Einnahmen −
+                          Ausgaben), also das theoretische Sparpotenzial.
+
+    Die Lücke zwischen beiden ist das Geld, das liegen geblieben ist, statt
+    angelegt zu werden.
+    """
+
     months: list[str]
     income: list[float]
     expenses: list[float]
-    rate: list[float]  # Prozent (Bilanz ÷ Einnahmen)
+    saved: list[float]           # Netto-Zufluss auf Sparkonten in Euro
+    rate: list[float]            # Prozent (Netto-Zufluss ÷ Einnahmen)
+    surplus: list[float]         # Einnahmen − Ausgaben in Euro
+    surplus_rate: list[float]    # Prozent (Überschuss ÷ Einnahmen)
 
 
 class YearComparisonRow(BaseModel):

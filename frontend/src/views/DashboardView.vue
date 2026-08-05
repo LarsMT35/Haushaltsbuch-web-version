@@ -641,12 +641,22 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <div v-if="isVisible('savings_rate') && savingsRate" class="tile wide" v-bind="tileProps('savings_rate')">
         <button class="tile-close" @click="hide('savings_rate')">✕</button>
-        <h3>Sparquote (Bilanz ÷ Einnahmen) <span class="hint">letzte {{ TREND_MONTHS }} Monate</span></h3>
+        <h3>Sparquote <span class="hint">letzte {{ TREND_MONTHS }} Monate</span></h3>
         <ChartCanvas type="bar"
           :labels="savingsRate.months"
-          :datasets="[{ label: 'Sparquote %', data: savingsRate.rate,
-                        backgroundColor: savingsRate.rate.map((v) => v >= 0 ? '#0f766e' : '#b91c1c') }]"
-          :options="{ ...NO_LEGEND, scales: { y: { ticks: { callback: (v) => v + ' %' } } } }" />
+          :datasets="[
+            { label: 'tatsächlich gespart %', data: savingsRate.rate,
+              backgroundColor: savingsRate.rate.map((v) => v >= 0 ? '#0f766e' : '#b91c1c') },
+            { type: 'line', label: 'Sparpotenzial (Einnahmen − Ausgaben) %', data: savingsRate.surplus_rate,
+              borderColor: '#9aa7b4', borderDash: [5, 4], borderWidth: 2, pointRadius: 0, tension: .2 },
+          ]"
+          :options="{ scales: { y: { ticks: { callback: (v) => v + ' %' } } } }" />
+        <p class="hint" style="margin: .4rem 0 0">
+          Balken = Netto-Zufluss auf die Sparkonten, inklusive aller Umbuchungen in beide Richtungen
+          (200 € aufs Tagesgeld, 50 € zurück = 150 € gespart).
+          Die gestrichelte Linie ist das, was rechnerisch übrig blieb – der Abstand dazwischen liegt
+          unverzinst auf dem Girokonto.
+        </p>
       </div>
 
       <div v-if="isVisible('year_comparison') && yearComp" class="tile wide" v-bind="tileProps('year_comparison')">

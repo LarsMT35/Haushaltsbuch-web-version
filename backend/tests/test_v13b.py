@@ -85,6 +85,10 @@ def test_transfer_like_category_excluded_from_savings_rate_and_year_comparison(c
                            "account_ids": [giro["id"]]}).json()
     idx = sr["months"].index("2026-07")
     assert sr["expenses"][idx] == 0.0  # Sparplan-Buchung nicht als Ausgabe
+    # ohne mitgeführtes Zielkonto IST die Abbuchung der Sparbetrag – sie zählt
+    # deshalb positiv in die Sparquote, nicht negativ
+    assert sr["saved"][idx] == 100.0
+    assert sr["rate"][idx] == 5.0  # 100 von 2000 Einnahmen
 
     yc = client.get("/api/v1/dashboard/year-comparison", headers=h).json()
     assert not any(row["category_name"] == "V13b-Aktien4" for row in yc["rows"])

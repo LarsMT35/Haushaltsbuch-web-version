@@ -117,7 +117,10 @@ automatisch aus.
 - ✅ **Kachel-Dashboard**: Kacheln per Drag & Drop anordnen, aus-/einblenden –
   Layout wird pro Nutzer gespeichert
 - ✅ **Erweiterte Dashboards**: Vermögensverlauf pro Konto, Sparquote im
-  Zeitverlauf, Jahresvergleich pro Kategorie
+  Zeitverlauf (**tatsächlicher Netto-Zufluss auf die Sparkonten** inkl. aller
+  Umbuchungen in beide Richtungen – 200 € aufs Tagesgeld und 50 € zurück
+  ergeben 150 € gespart; zum Vergleich das rechnerische Sparpotenzial),
+  Jahresvergleich pro Kategorie
 - ✅ Design-Einstellungen (Farbschemata + Dark Mode, seit v1.0)
 - ✅ Rückwirkende Regelanwendung (seit v1.0)
 

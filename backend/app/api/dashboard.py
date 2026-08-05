@@ -207,38 +207,71 @@ def networth(date_from: date | None = None, date_to: date | None = None,
 def savings_rate(date_from: date | None = None, date_to: date | None = None,
                  account_ids: list[int] | None = Query(None),
                  user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Sparquote im Zeitverlauf (4.9): Bilanz ÷ Einnahmen je Monat, ohne Umbuchungen
-    (echte wie auch Kategorien mit "wie Umbuchung behandeln")."""
+    """Sparquote im Zeitverlauf (4.9): wie viel vom Einkommen tatsächlich auf
+    den Sparkonten gelandet ist.
+
+    Gezählt wird der NETTO-Zufluss inklusive aller Umbuchungen in beide
+    Richtungen: 200 € aufs Tagesgeld und später 50 € zurück aufs Giro ergeben
+    150 € gespart. Umbuchungen sind hier also ausdrücklich relevant – anders
+    als bei Einnahmen/Ausgaben, wo sie nicht mitzählen dürfen.
+
+    Zusätzlich wird der Überschuss (Einnahmen − Ausgaben) ausgewiesen, also
+    das theoretische Sparpotenzial. Die Lücke zwischen beiden Werten ist das
+    Geld, das auf dem Girokonto liegen geblieben ist.
+    """
     if date_to is None:
         date_to = date.today()
     if date_from is None:
         date_from = date_to.replace(day=1).replace(year=date_to.year - 1)
     ids = accessible_account_ids(db, user)
     filter_ids = ([aid for aid in account_ids if aid in ids] or ids) if account_ids else ids
-    transfer_like_ids = {cid for (cid,) in db.query(Category.id).filter(Category.is_transfer_like.is_(True)).all()}
+    categories = {c.id: c for c in db.query(Category).all()}
+    transfer_like_ids = {cid for cid, c in categories.items() if c.is_transfer_like}
+    accounts = {a.id: a for a in db.query(Account).filter(Account.id.in_(filter_ids)).all()}
+
+    # Hier bewusst OHNE transfer_id-Filter: der Zufluss auf die Sparkonten
+    # besteht ja gerade aus Umbuchungen.
     txs = (db.query(Transaction)
            .filter(Transaction.account_id.in_(filter_ids),
                    Transaction.booking_date >= date_from,
-                   Transaction.booking_date <= date_to,
-                   Transaction.transfer_id.is_(None))
+                   Transaction.booking_date <= date_to)
            .all())
     months = _month_range(date_from, date_to)
     inc = {m: Decimal("0") for m in months}
     out = {m: Decimal("0") for m in months}
+    saved = {m: Decimal("0") for m in months}
     for t in txs:
-        if t.category_id in transfer_like_ids:
-            continue
         m = t.booking_date.strftime("%Y-%m")
         if m not in inc:
             continue
+        acc = accounts.get(t.account_id)
+        cat = categories.get(t.category_id) if t.category_id else None
+        if acc is not None and acc.type in SAVINGS_TYPES:
+            # Sparkonto-Seite: Zugang zählt positiv, Rückbuchung negativ
+            saved[m] += t.amount_ref
+        elif cat is not None and cat.is_transfer_like and not cat.transfer_target_account_id:
+            # Sparplan ohne mitgeführtes Zielkonto: die Abbuchung auf der
+            # zahlenden Seite IST der Sparbetrag, daher Vorzeichen drehen
+            saved[m] += -t.amount_ref
+        if t.transfer_id or t.category_id in transfer_like_ids:
+            continue  # Umbuchungen sind weder Einnahme noch Ausgabe
         if t.amount_ref >= 0:
             inc[m] += t.amount_ref
         else:
             out[m] += -t.amount_ref
-    rate = [float((inc[m] - out[m]) / inc[m] * 100) if inc[m] else 0.0 for m in months]
-    return SavingsRateOut(months=months, income=[float(inc[m]) for m in months],
-                          expenses=[float(out[m]) for m in months],
-                          rate=[round(r, 1) for r in rate])
+
+    def pct(value: Decimal, base: Decimal) -> float:
+        return round(float(value / base * 100), 1) if base else 0.0
+
+    return SavingsRateOut(
+        months=months,
+        income=[float(inc[m]) for m in months],
+        expenses=[float(out[m]) for m in months],
+        saved=[float(saved[m]) for m in months],
+        rate=[pct(saved[m], inc[m]) for m in months],
+        surplus=[float(inc[m] - out[m]) for m in months],
+        surplus_rate=[pct(inc[m] - out[m], inc[m]) for m in months],
+    )
 
 
 @router.get("/year-comparison", response_model=YearComparisonOut)
