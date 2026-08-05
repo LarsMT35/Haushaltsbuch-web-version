@@ -11,7 +11,7 @@ const info = ref('')
 
 // Konto anlegen (4.2)
 const accountForm = ref({ name: '', type: 'giro', bank: '', iban: '',
-                          opening_balance: '0', opening_balance_date: '' })
+                          opening_balance: '0', opening_balance_date: '', is_household: false })
 // Rollen (4.1)
 const users = ref([])
 const roleForm = ref({ account_id: '', user_id: '', role: 'reader' })
@@ -58,6 +58,15 @@ async function archive(a) {
   const res = await api.del(`/accounts/${a.id}`)
   info.value = `Konto archiviert (${res.transactions_affected} Buchungen bleiben erhalten).`
   await refreshAccounts()
+}
+
+// Haushalts- vs. Privatkonto: steuert die Trennung des Dashboards (4.9.1)
+async function toggleHousehold(a) {
+  error.value = ''
+  try {
+    await api.put(`/accounts/${a.id}`, { is_household: !a.is_household })
+    await refreshAccounts()
+  } catch (e) { error.value = e.message }
 }
 
 async function assignRole() {
@@ -141,17 +150,25 @@ async function changePassword() {
           <div><label>IBAN</label><input v-model="accountForm.iban" placeholder="für Auto-Erkennung & Umbuchungen" /></div>
           <div><label>Anfangssaldo *</label><input type="number" step="0.01" v-model="accountForm.opening_balance" /></div>
           <div><label>Saldo-Stichtag</label><input type="date" v-model="accountForm.opening_balance_date" /></div>
+          <div><label title="Zählt im Dashboard zum Bereich „Gemeinsam“ statt „Persönlich“">Haushaltskonto</label>
+            <input type="checkbox" v-model="accountForm.is_household" /></div>
           <button class="primary" :disabled="!accountForm.name" @click="createAccount">Anlegen</button>
         </div>
         <p class="hint">Ohne Anfangssaldo zum Startdatum wäre jeder berechnete Kontostand falsch (4.2).
-          Tipp: Bargeld als eigenes Konto führen, Abhebung = Umbuchung.</p>
+          Tipp: Bargeld als eigenes Konto führen, Abhebung = Umbuchung.<br />
+          <strong>Haushaltskonto</strong> trennt das Dashboard in „Gemeinsam“ und „Persönlich“ – unabhängig davon,
+          wer Zugriff hat. Wer nur Zugriff auf Haushaltskonten hat, sieht ausschließlich diesen Bereich.</p>
         <table>
           <tbody>
             <tr v-for="a in accounts" :key="a.id">
-              <td>{{ a.name }} <span class="hint">{{ a.type }}</span></td>
+              <td>{{ a.name }} <span class="hint">{{ a.type }}</span>
+                <span v-if="a.is_household" class="badge">Haushalt</span>
+                <span v-if="a.shared" class="badge gray">geteilt</span></td>
               <td class="hint">{{ a.iban }}</td>
               <td>{{ a.my_role }}</td>
-              <td style="text-align: right">
+              <td style="text-align: right; white-space: nowrap">
+                <button v-if="a.my_role === 'owner'" @click="toggleHousehold(a)">
+                  {{ a.is_household ? 'Haushalt ✕' : 'als Haushaltskonto' }}</button>
                 <button v-if="a.my_role === 'owner'" @click="archive(a)">Archivieren</button>
               </td>
             </tr>

@@ -8,7 +8,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -50,7 +50,10 @@ def summary(date_from: date | None = None, date_to: date | None = None,
     else:
         filter_ids = ids
 
-    accounts = {a.id: a for a in db.query(Account).filter(Account.id.in_(ids), Account.archived.is_(False)).all()}
+    # Salden folgen der Kontenauswahl: im Dashboard-Modus "Gemeinsam" muss das
+    # Gesamtvermögen das des Haushalts sein, nicht das aller Konten (4.9.1).
+    accounts = {a.id: a for a in db.query(Account)
+                .filter(Account.id.in_(filter_ids), Account.archived.is_(False)).all()}
     categories = {c.id: c for c in db.query(Category).all()}
 
     txs = (db.query(Transaction)
@@ -118,7 +121,8 @@ def summary(date_from: date | None = None, date_to: date | None = None,
             Decimal("0"))
         total += bal
         balances.append(AccountBalance(account_id=a.id, name=a.name, type=a.type,
-                                       balance=float(bal), shared=len(a.account_roles) > 1))
+                                       balance=float(bal), shared=len(a.account_roles) > 1,
+                                       is_household=a.is_household))
 
     def cat_name(cid: int | None) -> str:
         if cid is None:
@@ -306,20 +310,46 @@ def deposits(account_id: int, date_from: date | None = None, date_to: date | Non
                        depositors=sorted(depositors), series=series)
 
 
+DASHBOARD_MODES = ("gemeinsam", "persoenlich", "gesamt")
+
+
+def _tiles_for_mode(stored, mode: str) -> list:
+    """Altes Format (blanke Liste) gilt für jeden Modus, damit gespeicherte
+    Layouts die Umstellung überleben."""
+    if isinstance(stored, list):
+        return stored
+    if isinstance(stored, dict):
+        return stored.get(mode, [])
+    return []
+
+
 @router.get("/layout", response_model=LayoutOut)
-def get_layout(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Kachel-Layout pro Nutzer (4.9.1): Reihenfolge + Sichtbarkeit."""
+def get_layout(mode: str = "gesamt", user: User = Depends(get_current_user),
+               db: Session = Depends(get_db)):
+    """Kachel-Layout pro Nutzer UND Dashboard-Modus (4.9.1): Reihenfolge +
+    Sichtbarkeit. "Gemeinsam" und "Persönlich" beantworten unterschiedliche
+    Fragen und verdienen daher unterschiedliche Kacheln."""
+    if mode not in DASHBOARD_MODES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unbekannter Modus: {mode}")
     layout = db.get(DashboardLayout, user.id)
-    return LayoutOut(tiles=layout.tiles if layout else [])
+    return LayoutOut(tiles=_tiles_for_mode(layout.tiles if layout else None, mode))
 
 
 @router.put("/layout", response_model=LayoutOut)
-def set_layout(payload: LayoutOut, user: User = Depends(get_current_user),
-               db: Session = Depends(get_db)):
+def set_layout(payload: LayoutOut, mode: str = "gesamt",
+               user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if mode not in DASHBOARD_MODES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unbekannter Modus: {mode}")
     layout = db.get(DashboardLayout, user.id)
     if layout is None:
-        layout = DashboardLayout(user_id=user.id, tiles=[])
+        layout = DashboardLayout(user_id=user.id, tiles={})
         db.add(layout)
-    layout.tiles = [t.model_dump() for t in payload.tiles]
+    if isinstance(layout.tiles, dict):
+        by_mode = dict(layout.tiles)
+    else:
+        # Migration im Betrieb: bisheriges Einzel-Layout für alle Modi übernehmen
+        by_mode = {m: list(layout.tiles or []) for m in DASHBOARD_MODES}
+    by_mode[mode] = [t.model_dump() for t in payload.tiles]
+    layout.tiles = by_mode
     db.commit()
     return payload

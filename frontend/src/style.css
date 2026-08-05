@@ -78,6 +78,11 @@ a { color: var(--accent); text-decoration: none; }
 }
 .account-item:hover { background: var(--accent-soft); }
 .account-item .bal { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.account-item.account-total {
+  margin-top: .4rem; padding-top: .5rem; border-top: 1px solid var(--border);
+  font-weight: 600; cursor: default;
+}
+.account-item.account-total:hover { background: none; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
 .tile {
@@ -160,6 +165,14 @@ button.primary, .btn.primary { background: var(--accent); border-color: var(--ac
 button:disabled { opacity: .5; cursor: default; }
 /* Zeitraum-Quicklinks: markiert die aktuell aktive Voreinstellung (4.9) */
 .chips button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+/* Bereichs-Umschalter Gemeinsam / Persönlich / Gesamt (4.9.1) */
+.chips.segmented { margin-bottom: .75rem; }
+.chips.segmented button { border-radius: 999px; font-weight: 600; }
+.chips.segmented button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Kennzahlen gebündelt in einer Kachel statt vier einzelner Kacheln */
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; }
+.kpi-row .big { margin: .1rem 0; }
 
 input, select, textarea {
   border: 1px solid var(--border); border-radius: 8px; padding: .4rem .6rem;

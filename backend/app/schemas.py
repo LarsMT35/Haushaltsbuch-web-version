@@ -72,6 +72,7 @@ class AccountOut(ORMModel):
     note: str
     opening_balance: Decimal
     opening_balance_date: date | None
+    is_household: bool = False
     archived: bool
     my_role: str | None = None
     balance: Decimal | None = None
@@ -87,6 +88,7 @@ class AccountCreate(BaseModel):
     note: str = ""
     opening_balance: Decimal = Decimal("0")
     opening_balance_date: date | None = None
+    is_household: bool = False
 
 
 class AccountUpdate(BaseModel):
@@ -97,6 +99,7 @@ class AccountUpdate(BaseModel):
     note: str | None = None
     opening_balance: Decimal | None = None
     opening_balance_date: date | None = None
+    is_household: bool | None = None
     archived: bool | None = None
 
 
@@ -411,6 +414,7 @@ class AccountBalance(BaseModel):
     type: str
     balance: float
     shared: bool = False
+    is_household: bool = False
 
 
 class DashboardSummary(BaseModel):

@@ -42,8 +42,12 @@ function logout() {
   router.push('/login')
 }
 
-const personal = computed(() => accounts.value.filter((a) => !a.shared))
-const shared = computed(() => accounts.value.filter((a) => a.shared))
+// Trennung nach dem expliziten Haushalts-Flag, nicht nach der Zahl der
+// Zugriffsberechtigten – dieselbe Einteilung wie im Dashboard (4.9.1)
+const personal = computed(() => accounts.value.filter((a) => !a.is_household))
+const household = computed(() => accounts.value.filter((a) => a.is_household))
+const totalBalance = computed(() =>
+  accounts.value.reduce((sum, a) => sum + Number(a.balance || 0), 0))
 </script>
 
 <template>
@@ -61,20 +65,28 @@ const shared = computed(() => accounts.value.filter((a) => a.shared))
         <router-link to="/wiederkehrend">Wiederkehrend</router-link>
       </nav>
       <!-- Kontenliste dauerhaft sichtbar, persönlich/gemeinsam getrennt (4.9.1) -->
-      <h2 style="color: var(--muted); font-size: .8rem; text-transform: uppercase">Meine Konten</h2>
-      <div v-for="a in personal" :key="a.id" class="account-item"
-           @click="$router.push({ path: '/buchungen', query: { account_id: a.id } })">
-        <span>{{ a.name }}</span>
-        <span class="bal" :class="a.balance < 0 ? 'neg' : ''">{{ fmtAmount(a.balance) }}</span>
-      </div>
-      <template v-if="shared.length">
+      <template v-if="household.length">
         <h2 style="color: var(--muted); font-size: .8rem; text-transform: uppercase">Gemeinsame Konten</h2>
-        <div v-for="a in shared" :key="a.id" class="account-item"
+        <div v-for="a in household" :key="a.id" class="account-item"
              @click="$router.push({ path: '/buchungen', query: { account_id: a.id } })">
-          <span>{{ a.name }} <span class="badge gray">{{ a.my_role === 'reader' ? 'Leser' : 'geteilt' }}</span></span>
+          <span>{{ a.name }}
+            <span v-if="a.my_role === 'reader'" class="badge gray">Leser</span></span>
           <span class="bal" :class="a.balance < 0 ? 'neg' : ''">{{ fmtAmount(a.balance) }}</span>
         </div>
       </template>
+      <template v-if="personal.length">
+        <h2 style="color: var(--muted); font-size: .8rem; text-transform: uppercase">Meine Konten</h2>
+        <div v-for="a in personal" :key="a.id" class="account-item"
+             @click="$router.push({ path: '/buchungen', query: { account_id: a.id } })">
+          <span>{{ a.name }}
+            <span v-if="a.shared" class="badge gray">geteilt</span></span>
+          <span class="bal" :class="a.balance < 0 ? 'neg' : ''">{{ fmtAmount(a.balance) }}</span>
+        </div>
+      </template>
+      <div v-if="accounts.length" class="account-item account-total">
+        <span>Gesamt</span>
+        <span class="bal" :class="totalBalance < 0 ? 'neg' : ''">{{ fmtAmount(totalBalance) }}</span>
+      </div>
     </aside>
     <main class="main">
       <div class="topbar">

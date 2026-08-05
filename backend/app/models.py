@@ -59,8 +59,11 @@ class DashboardLayout(Base):
     __tablename__ = "dashboard_layouts"
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
-    # Liste der Kacheln inkl. Typ, Position, Größe, sichtbar/entfernt (4.9.1)
-    tiles: Mapped[list] = mapped_column(JSON, default=list)
+    # Kacheln inkl. Typ, Position, sichtbar/entfernt (4.9.1). Seit der
+    # Dashboard-Trennung je Modus abgelegt: {"gemeinsam": [...],
+    # "persoenlich": [...], "gesamt": [...]}. Eine blanke Liste ist das alte
+    # Format und wird weiter gelesen (gilt dann für alle Modi).
+    tiles: Mapped[dict | list] = mapped_column(JSON, default=dict)
 
 
 # ------------------------------------------------------------------ Konten
@@ -84,6 +87,11 @@ class Account(Base):
     # Anfangssaldo + Stichtag sind Pflichtbestandteil des Modells (4.2)
     opening_balance: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
     opening_balance_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Haushalts- statt Privatkonto: trennt das Dashboard in "Gemeinsam" und
+    # "Persönlich" (4.9.1). Bewusst ein explizites Feld statt aus der Zahl der
+    # Rollen abgeleitet – sonst würde ein Haushaltskonto ohne zweiten Nutzer
+    # als privat gelten und ein privates Konto mit Leserecht als gemeinsam.
+    is_household: Mapped[bool] = mapped_column(Boolean, default=False)
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

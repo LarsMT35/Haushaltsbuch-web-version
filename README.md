@@ -157,6 +157,28 @@ automatisch aus.
 - ✅ Dashboard-Filter: mehrere Konten UND mehrere Kategorien gleichzeitig
   kombinierbar, Zeitraum defaultet auf den letzten abgeschlossenen Monat
 
+### v1.4 – Getrenntes Dashboard & aufgeräumte Auswertungen
+
+- ✅ **Bereiche „Gemeinsam / Persönlich / Gesamt“**: Haushalts- und Privatgeld
+  beantworten unterschiedliche Fragen – eine gemeinsame Ausgabensumme aus
+  Miete und privatem Kaffee sagt nichts. Konten tragen dafür ein explizites
+  Flag **Haushaltskonto** (nicht aus der Zahl der Zugriffsberechtigten
+  abgeleitet). Jeder Bereich hat sein **eigenes Kachel-Layout**; wer nur
+  Zugriff auf Haushaltskonten hat (z.B. der Partner als Leser), sieht gar
+  keinen Umschalter, sondern direkt nur diesen Bereich.
+- ✅ **Zeitraum von den Verlaufs-Kacheln entkoppelt**: Kennzahlen und
+  Kategorien folgen dem gewählten Zeitraum, Verläufe zeigen immer die
+  letzten 12 Monate – vorher wurde aus jedem Liniendiagramm ein einzelner
+  Punkt, sobald man auf einen Monat filterte.
+- ✅ **Kennzahlen in einer Kachel** statt vier einzelner, jeweils mit
+  **Veränderung gegenüber dem Vergleichszeitraum davor** (bei ganzen
+  Monaten/Jahren kalendarisch, sonst gleich langer Zeitraum)
+- ✅ **Einnahmen/Ausgaben/Bilanz in einem Diagramm** statt zweier fast
+  gleicher Balkendiagramme; **Kategorien als waagerechte Balken** statt
+  Donut (Längen vergleicht das Auge zuverlässiger als Kreissegmente);
+  Fixkosten-Anteil in Prozent direkt an der Kachel
+- ✅ Kontenliste mit **Summenzeile**, nach Haushalt/privat gruppiert
+
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).
 

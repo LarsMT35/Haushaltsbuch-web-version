@@ -53,7 +53,7 @@ export const api = {
   get: (path, params) => request('GET', path, { params }),
   post: (path, json) => request('POST', path, { json }),
   postForm: (path, form) => request('POST', path, { form }),
-  put: (path, json) => request('PUT', path, { json }),
+  put: (path, json, params) => request('PUT', path, { json, params }),
   del: (path, params) => request('DELETE', path, { params }),
 }
 

@@ -9,9 +9,14 @@ Beim allerersten Start (`SEED_DEMO_DATA=true`, nur im Demo-Stack aktiv,
 siehe `backend/app/seed_demo.py`) wird die leere Datenbank mit einer
 realistischen ~6-Monats-Historie befüllt:
 
-- **5 Konten**: Girokonto, Tagesgeld, Bargeld, ein gemeinsames Konto, ein Depot
+- **5 Konten**: Girokonto, Tagesgeld, Bargeld, ein Depot (alle privat) und ein
+  gemeinsames Konto, das als **Haushaltskonto** markiert ist – damit lässt
+  sich der Dashboard-Umschalter „Gemeinsam / Persönlich / Gesamt“ (v1.4)
+  direkt vorführen
 - **2 Nutzer**: `test` (Eigentümer aller Konten) und `partner`/`partner123`
-  (Leser auf dem gemeinsamen Konto) – zum Vorführen des Rollenmodells (4.1)
+  (Leser auf dem gemeinsamen Konto) – zum Vorführen des Rollenmodells (4.1).
+  Meldet man sich als `partner` an, gibt es keinen Bereichs-Umschalter,
+  sondern nur den gemeinsamen Haushalt zu sehen.
 - **~150 Buchungen**: Gehalt, Miete, Nebenkosten, Abos, Lebensmittel,
   Tanken, Restaurant, u.v.m.
 - Eine **automatisch erkannte Umbuchung** (Giro ↔ Tagesgeld, per IBAN) und

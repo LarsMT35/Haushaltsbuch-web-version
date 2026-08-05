@@ -71,7 +71,7 @@ def run(db: Session) -> None:
                       opening_balance=Decimal("60.00"), opening_balance_date=start)
     gemeinsam = Account(name="Gemeinsames Konto (Demo)", type="giro", bank="Musterbank",
                         iban=DEMO_GEMEINSAM_IBAN, opening_balance=Decimal("1200.00"),
-                        opening_balance_date=start)
+                        opening_balance_date=start, is_household=True)
     # Kein eigener Bank-Feed (kein CSV-Import), nur die automatischen
     # Gegenbuchungen der Sparplan-Kategorie (v1.3b) – zeigt, dass "wie
     # Umbuchung behandeln" mit Zielkonto den Saldo tatsächlich fortschreibt.
