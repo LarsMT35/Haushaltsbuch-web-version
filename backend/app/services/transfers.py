@@ -102,7 +102,7 @@ def auto_mirror_category_transfers(db: Session, account_ids: list[int]) -> int:
             amount=-tx.amount, amount_ref=-tx.amount_ref,
             counterparty=tx.account.name if tx.account else "",
             purpose=f"Automatische Gegenbuchung: {tx.purpose or tx.counterparty}".strip(),
-            is_manual=True,
+            is_manual=True, is_auto_counterpart=True,
         )
         db.add(mirror)
         db.flush()
@@ -131,8 +131,62 @@ def link_manual(db: Session, a: Transaction, b: Transaction) -> Transfer:
     return transfer
 
 
-def unlink(db: Session, transfer: Transfer) -> None:
+def detach(db: Session, tx: Transaction) -> int:
+    """Löst die Umbuchung von `tx` und räumt automatisch erzeugte
+    Gegenbuchungen mit ab. Rückgabe: Anzahl gelöschter Gegenbuchungen.
+
+    Ohne das bliebe im Zielkonto (z.B. Depot) eine Buchung ohne Gegenstück
+    stehen und der Saldo dauerhaft falsch – abgeleitete Daten müssen mit
+    ihrer Quelle verschwinden. Kein commit: der Aufrufer bestimmt die
+    Transaktionsgrenze.
+    """
+    if not tx.transfer_id:
+        return 0
+    transfer = db.get(Transfer, tx.transfer_id)
+    dropped = 0
+    for other in (db.query(Transaction)
+                  .filter(Transaction.transfer_id == tx.transfer_id,
+                          Transaction.id != tx.id).all()):
+        if other.is_auto_counterpart:
+            db.delete(other)
+            dropped += 1
+        else:
+            other.transfer_id = None
+    tx.transfer_id = None
+    if transfer is not None:
+        db.delete(transfer)
+    return dropped
+
+
+def drop_orphaned_counterparts(db: Session, account_ids: list[int]) -> int:
+    """Automatisch erzeugte Gegenbuchungen ohne Verknüpfung entfernen.
+
+    Eine solche Buchung kann nie gültig sein – sie existiert nur als
+    Gegenstück. Verwaiste Exemplare stammen aus Beständen vor v1.5.1, in
+    denen Rollback/Löschen sie stehen ließ.
+    """
+    orphans = (db.query(Transaction)
+               .filter(Transaction.account_id.in_(account_ids),
+                       Transaction.is_auto_counterpart.is_(True),
+                       Transaction.transfer_id.is_(None))
+               .all())
+    for tx in orphans:
+        db.delete(tx)
+    if orphans:
+        db.commit()
+    return len(orphans)
+
+
+def unlink(db: Session, transfer: Transfer) -> int:
+    """Umbuchung auflösen. Automatisch erzeugte Gegenbuchungen gehen mit,
+    von Hand erfasste bleiben als eigenständige Buchungen bestehen."""
+    dropped = 0
     for tx in db.query(Transaction).filter(Transaction.transfer_id == transfer.id).all():
-        tx.transfer_id = None
+        if tx.is_auto_counterpart:
+            db.delete(tx)
+            dropped += 1
+        else:
+            tx.transfer_id = None
     db.delete(transfer)
     db.commit()
+    return dropped

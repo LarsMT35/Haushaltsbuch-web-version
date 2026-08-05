@@ -44,6 +44,11 @@ function logout() {
 
 // Trennung nach dem expliziten Haushalts-Flag, nicht nach der Zahl der
 // Zugriffsberechtigten – dieselbe Einteilung wie im Dashboard (4.9.1)
+// Auf schmalen Geräten ist die Seitenleiste eingeklappt – ohne Umschalter
+// gäbe es dort gar keine Navigation mehr (4.9: mobiltauglich)
+const navOpen = ref(false)
+watch(() => route.path, () => { navOpen.value = false })
+
 const personal = computed(() => accounts.value.filter((a) => !a.is_household))
 const household = computed(() => accounts.value.filter((a) => a.is_household))
 const totalBalance = computed(() =>
@@ -52,7 +57,9 @@ const totalBalance = computed(() =>
 
 <template>
   <div v-if="!loggedIn"><router-view @logged-in="loadSession" /></div>
-  <div v-else class="layout">
+  <div v-else class="layout" :class="{ 'nav-open': navOpen }">
+    <!-- Abdunkeln hinter der ausgeklappten Navigation, Klick schließt sie -->
+    <div class="nav-backdrop" @click="navOpen = false"></div>
     <aside class="sidebar">
       <h1 style="margin-bottom: 1rem">💰 Haushaltsbuch</h1>
       <nav class="nav">
@@ -90,6 +97,7 @@ const totalBalance = computed(() =>
     </aside>
     <main class="main">
       <div class="topbar">
+        <button class="nav-toggle" aria-label="Menü" @click="navOpen = !navOpen">☰</button>
         <div class="spacer"></div>
         <span v-if="user" class="hint">{{ user.display_name }}</span>
         <!-- Zahnrad neben dem Benutzer-Avatar (4.10) -->

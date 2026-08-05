@@ -58,6 +58,23 @@ a { color: var(--accent); text-decoration: none; }
 }
 .topbar .spacer { flex: 1; }
 
+/* Mobil: Seitenleiste als ausklappbares Panel statt ersatzlos ausgeblendet –
+   sonst gäbe es auf dem Handy überhaupt keine Navigation mehr (4.9) */
+.nav-toggle { display: none; font-size: 1.1rem; line-height: 1; padding: .35rem .7rem; }
+.nav-backdrop { display: none; }
+@media (max-width: 800px) {
+  .nav-toggle { display: inline-block; }
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 50; width: 260px;
+    transform: translateX(-100%); transition: transform .2s ease;
+    box-shadow: 0 0 24px rgba(0, 0, 0, .25);
+  }
+  .layout.nav-open .sidebar { transform: translateX(0); }
+  .layout.nav-open .nav-backdrop {
+    display: block; position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, .4);
+  }
+}
+
 /* Bleibt beim Scrollen sichtbar – z.B. die Regel-Werkzeugleiste bei langen Listen */
 .sticky-top {
   position: sticky; top: 0; z-index: 20;
@@ -90,7 +107,7 @@ a { color: var(--accent); text-decoration: none; }
   border-radius: 12px; padding: 1rem; min-width: 0;
 }
 .tile.wide { grid-column: span 2; }
-@media (max-width: 800px) { .tile.wide { grid-column: span 1; } .sidebar { display: none; } }
+@media (max-width: 800px) { .tile.wide { grid-column: span 1; } }
 .tile { position: relative; }
 .tile h3 { margin: 0 0 .5rem; font-size: .95rem; color: var(--muted); }
 .tile-close {

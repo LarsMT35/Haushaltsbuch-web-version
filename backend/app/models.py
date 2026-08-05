@@ -199,6 +199,11 @@ class Transaction(Base):
     raw_line: Mapped[str] = mapped_column(Text, default="")  # Rohzeile aufbewahren (Prinzip 2)
     dedup_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
     is_manual: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Automatisch erzeugte Gegenbuchung einer Kategorie mit Umbuchungs-Zielkonto
+    # (4.4/v1.3b). Solche Buchungen sind abgeleitete Daten und haben kein
+    # Eigenleben: verschwindet die Quelle oder die Verknüpfung, müssen sie
+    # mitgehen – sonst bleibt im Zielkonto ein Saldo-Phantom zurück.
+    is_auto_counterpart: Mapped[bool] = mapped_column(Boolean, default=False)
     transfer_id: Mapped[int | None] = mapped_column(ForeignKey("transfers.id"), nullable=True, index=True)
     # Von der Bank mitgelieferter Saldo NACH dieser Buchung, falls vorhanden
     # (z.B. ING) – Grundlage für den Saldo-Abgleich (4.2)

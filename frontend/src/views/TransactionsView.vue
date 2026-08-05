@@ -176,7 +176,8 @@ async function detectTransfers() {
   try {
     const r = await api.post('/transfers/detect')
     info.value = `${r.linked} Umbuchung(en) automatisch verknüpft (IBAN-Beleg)` +
-      (r.mirrored ? `, ${r.mirrored} Gegenbuchung(en) in Umbuchungs-Zielkonten (z.B. Depot) angelegt.` : '.')
+      (r.mirrored ? `, ${r.mirrored} Gegenbuchung(en) in Umbuchungs-Zielkonten (z.B. Depot) angelegt` : '') +
+      (r.cleaned ? `, ${r.cleaned} verwaiste Gegenbuchung(en) aufgeräumt` : '') + '.'
     await load()
     await refreshAccounts()
   } catch (e) { error.value = e.message }

@@ -226,6 +226,7 @@ class TransactionOut(ORMModel):
     note: str
     import_batch_id: int | None
     is_manual: bool
+    is_auto_counterpart: bool = False
     transfer_id: int | None
     bank_balance: Decimal | None
     splits: list[SplitOut] = []

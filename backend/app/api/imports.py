@@ -19,7 +19,7 @@ from ..schemas import (
 from ..services.audit import log
 from ..services.csv_import import analyze_csv, parse_csv
 from ..services.rules_engine import categorize, load_rules
-from ..services.transfers import auto_link_transfers, auto_mirror_category_transfers
+from ..services.transfers import auto_link_transfers, auto_mirror_category_transfers, detach
 
 router = APIRouter(prefix="/imports", tags=["imports"])
 
@@ -211,14 +211,15 @@ def rollback(batch_id: int, user: User = Depends(get_current_user),
     txs = db.query(Transaction).filter(Transaction.import_batch_id == batch.id).all()
     if txs:
         require_account_access(db, user, txs[0].account_id, "editor")
+    dropped = 0
     for tx in txs:
-        if tx.transfer_id:  # Umbuchungs-Verknüpfung sauber auflösen
-            transfer = db.get(Transfer, tx.transfer_id)
-            for other in db.query(Transaction).filter(Transaction.transfer_id == transfer.id).all():
-                other.transfer_id = None
-            db.delete(transfer)
+        # Umbuchungs-Verknüpfung auflösen; automatisch erzeugte Gegenbuchungen
+        # (Kategorie mit Umbuchungs-Zielkonto) gehen mit, sonst bliebe im
+        # Zielkonto ein Saldo-Phantom ohne Gegenstück zurück
+        dropped += detach(db, tx)
         db.delete(tx)
     batch.reverted = True
-    log(db, user.id, "import_batch", batch.id, "rollback", {"count": len(txs)})
+    log(db, user.id, "import_batch", batch.id, "rollback",
+        {"count": len(txs), "counterparts_removed": dropped})
     db.commit()
     return batch

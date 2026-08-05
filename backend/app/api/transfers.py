@@ -21,11 +21,15 @@ def suggestions(user: User = Depends(get_current_user), db: Session = Depends(ge
 @router.post("/detect")
 def detect(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     account_ids = accessible_account_ids(db, user)
+    # Altlasten zuerst: verwaiste Gegenbuchungen aus Beständen vor v1.5.1,
+    # die beim Rollback/Löschen stehen geblieben sind und den Saldo des
+    # Zielkontos verfälschen
+    cleaned = svc.drop_orphaned_counterparts(db, account_ids)
     linked = svc.auto_link_transfers(db, account_ids)
     # Kategorien mit hinterlegtem Umbuchungs-Zielkonto (z.B. Depot ohne
     # eigenen Bank-Feed) bekommen hier ebenfalls ihre Gegenbuchung erzeugt
     mirrored = svc.auto_mirror_category_transfers(db, account_ids)
-    return {"linked": linked, "mirrored": mirrored}
+    return {"linked": linked, "mirrored": mirrored, "cleaned": cleaned}
 
 
 @router.post("/link")
@@ -56,7 +60,7 @@ def unlink(transfer_id: int, user: User = Depends(get_current_user),
     tx = db.query(Transaction).filter(Transaction.transfer_id == transfer.id).first()
     if tx:
         require_account_access(db, user, tx.account_id, "editor")
-    svc.unlink(db, transfer)
-    log(db, user.id, "transfer", transfer_id, "unlink", {})
+    dropped = svc.unlink(db, transfer)
+    log(db, user.id, "transfer", transfer_id, "unlink", {"counterparts_removed": dropped})
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "counterparts_removed": dropped}

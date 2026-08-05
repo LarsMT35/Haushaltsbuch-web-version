@@ -20,7 +20,7 @@ from ..schemas import (
     TransactionUpdate,
 )
 from ..services.audit import log
-from ..services.transfers import auto_link_transfers, auto_mirror_category_transfers
+from ..services.transfers import auto_link_transfers, auto_mirror_category_transfers, detach
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -128,12 +128,23 @@ def update_transaction(transaction_id: int, payload: TransactionUpdate,
             raise HTTPException(status.HTTP_400_BAD_REQUEST,
                                 "Persönliche Kategorie auf gemeinsamem Konto nicht erlaubt – "
                                 "Kategorie zuerst auf kontobezogen hochstufen")
+    # Wechselt die Kategorie weg von einer mit Umbuchungs-Zielkonto, verliert
+    # die automatische Gegenbuchung ihre Grundlage und muss weg (4.4)
+    old_category_id = tx.category_id
     for field, value in data.items():
         setattr(tx, field, value)
     if tx.is_manual and "amount" in data:
         tx.amount_ref = tx.amount
+    if "category_id" in data and data["category_id"] != old_category_id and tx.transfer_id:
+        old_cat = db.get(Category, old_category_id) if old_category_id else None
+        if old_cat is not None and old_cat.transfer_target_account_id:
+            detach(db, tx)
     log(db, user.id, "transaction", tx.id, "update", {k: str(v) for k, v in data.items()})
     db.commit()
+    # neue Kategorie kann ihrerseits ein Zielkonto haben -> Gegenbuchung anlegen
+    if "category_id" in data and data["category_id"] != old_category_id:
+        auto_mirror_category_transfers(db, accessible_account_ids(db, user))
+        db.refresh(tx)
     return tx
 
 
@@ -147,10 +158,13 @@ def delete_transaction(transaction_id: int, user: User = Depends(get_current_use
     if not tx.is_manual:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "Importierte Buchungen werden über den Import-Rollback entfernt")
-    log(db, user.id, "transaction", tx.id, "delete", {})
+    # abgeleitete Gegenbuchung im Zielkonto mitnehmen (4.4), sonst bliebe
+    # dort eine Buchung ohne Gegenstück stehen
+    dropped = detach(db, tx)
+    log(db, user.id, "transaction", tx.id, "delete", {"counterparts_removed": dropped})
     db.delete(tx)
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "counterparts_removed": dropped}
 
 
 @router.put("/{transaction_id}/splits", response_model=TransactionOut)
