@@ -18,6 +18,15 @@ class Settings(BaseSettings):
     # beim ersten Start mit Testkonten/-buchungen, in Produktion immer aus.
     seed_demo_data: bool = False
 
+    # Optionale Anbindung einer LOKALEN Ollama-Instanz (4.6). Leer = aus, dann
+    # existiert die Funktion in der Oberfläche nicht. Es werden ausschließlich
+    # Buchungstexte ohne Kontonummern an die eigene Instanz geschickt, und die
+    # KI schlägt nur vor – zugeordnet wird erst nach Bestätigung (Prinzip 6:
+    # Fachlogik bleibt regelbasiert im Backend, die KI ergänzt sie nur).
+    ollama_url: str = ""            # z.B. http://192.168.1.50:11434
+    ollama_model: str = "llama3.1"
+    ollama_timeout: int = 120
+
     class Config:
         env_file = ".env"
 

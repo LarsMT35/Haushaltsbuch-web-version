@@ -13,6 +13,10 @@ const yearComp = ref(null)
 const recurringStatus = ref(null)
 const deposits = ref(null)
 const categories = ref([])
+const budgetStatus = ref(null)
+const cumulative = ref(null)
+const categoryTrend = ref(null)
+const topCounterparties = ref(null)
 
 // ---------------------------------------------------------------- Zeitraum
 // Lokale Datumsteile statt toISOString(), sonst verschiebt die UTC-Umrechnung
@@ -145,19 +149,27 @@ function categoryLabel() {
 // Kachel-Registry: eine neue Auswertung ist ein neuer Eintrag, kein Layout-Umbau (4.9.1)
 const TILES = [
   ['kpis', 'Kennzahlen'], ['unassigned', 'Handlungsbedarf'],
+  ['cumulative', 'Monatsverlauf kumuliert'],
+  ['budget_progress', 'Budget-Fortschritt'],
+  ['fixed_base', 'Fixkosten-Sockel'],
   ['cashflow', 'Einnahmen / Ausgaben im Verlauf'],
   ['by_category', 'Ausgaben nach Kategorie'], ['fixed', 'Fix / Variabel'],
+  ['upcoming', 'Fällig in den nächsten 30 Tagen'],
+  ['category_trend', 'Kategorie-Trend'],
+  ['top_counterparties', 'Top-Empfänger'],
   ['savings', 'Bewegung Sparkonten'],
   ['networth', 'Vermögensverlauf'], ['savings_rate', 'Sparquote'],
   ['year_comparison', 'Jahresvergleich'],
   ['recurring_ampel', 'Wiederkehrende Kosten (Ampel)'],
   ['deposits', 'Einzahlungen gemeinsames Konto'],
 ]
-// Je Modus nur zeigen, was dort auch eine Frage beantwortet – statt überall alles.
+// Je Modus nur zeigen, was dort auch eine Frage beantwortet – statt überall
+// alles. Der Rest ist über „Ausgeblendet: +" jederzeit dazuschaltbar (4.9.1).
 const HIDDEN_BY_MODE = {
-  gemeinsam: ['networth', 'savings_rate', 'savings', 'year_comparison'],
-  persoenlich: ['deposits'],
-  gesamt: ['deposits'],
+  gemeinsam: ['networth', 'savings_rate', 'savings', 'year_comparison',
+              'category_trend', 'top_counterparties'],
+  persoenlich: ['deposits', 'category_trend', 'top_counterparties', 'upcoming'],
+  gesamt: ['deposits', 'category_trend', 'top_counterparties'],
 }
 const layout = ref([])
 const dragId = ref(null)
@@ -194,9 +206,12 @@ function hide(id) {
   const t = layout.value.find((t) => t.id === id)
   if (t) { t.visible = false; saveLayout() }
 }
-function show(id) {
+async function show(id) {
   const t = layout.value.find((t) => t.id === id)
-  if (t) { t.visible = true; saveLayout() }
+  if (!t) return
+  t.visible = true
+  saveLayout()
+  await load()   // Daten der eben eingeblendeten Kachel nachladen
 }
 function onDrop(targetId) {
   if (!dragId.value || dragId.value === targetId) return
@@ -234,16 +249,26 @@ async function load() {
   const summaryParams = { ...range, account_ids }
   if (filter.value.category_ids.length) summaryParams.category_ids = filter.value.category_ids
   const trendParams = { ...trendRange(), account_ids }
+  const month = (range.date_to || fmtDateLocal(new Date())).slice(0, 7)
+
+  // Nur laden, was gerade auch sichtbar ist – ausgeblendete Kacheln kosten
+  // sonst bei jedem Filterwechsel unnötige Abfragen.
+  const optional = (id, fn) => (isVisible(id) ? fn() : Promise.resolve(null))
 
   ;[summary.value, previous.value, trend.value, networth.value, savingsRate.value,
-    yearComp.value, recurringStatus.value] = await Promise.all([
+    yearComp.value, recurringStatus.value, budgetStatus.value, cumulative.value,
+    categoryTrend.value, topCounterparties.value] = await Promise.all([
     api.get('/dashboard/summary', summaryParams),
     api.get('/dashboard/summary', { ...previousRange(range.date_from, range.date_to), account_ids }),
     api.get('/dashboard/summary', trendParams),
-    api.get('/dashboard/networth', trendParams),
-    api.get('/dashboard/savings-rate', trendParams),
-    api.get('/dashboard/year-comparison', { account_ids }),
+    optional('networth', () => api.get('/dashboard/networth', trendParams)),
+    optional('savings_rate', () => api.get('/dashboard/savings-rate', trendParams)),
+    optional('year_comparison', () => api.get('/dashboard/year-comparison', { account_ids })),
     api.get('/recurring-items/status').then((r) => r.rows),
+    optional('budget_progress', () => api.get('/budgets/status', { month, account_ids })),
+    optional('cumulative', () => api.get('/dashboard/cumulative', { month, account_ids })),
+    optional('category_trend', () => api.get('/dashboard/category-trend', { ...trendParams, limit: 5 })),
+    optional('top_counterparties', () => api.get('/dashboard/top-counterparties', { ...range, account_ids, limit: 10 })),
   ])
   await loadDeposits()
 }
@@ -310,6 +335,32 @@ const cashflow = computed(() => {
 // Waagerechte Balken statt Donut: Längen vergleicht das Auge deutlich
 // zuverlässiger als Kreissegmente, gerade bei vielen Kategorien.
 const topCategories = computed(() => (summary.value?.by_category || []).slice(0, 10))
+
+/** Fixkosten-Sockel: wie viel vom Einkommen ist überhaupt frei verfügbar?
+ *  Die zentrale Haushaltszahl – im Fix/Variabel-Diagramm bisher vergraben. */
+const fixedBase = computed(() => {
+  if (!summary.value) return null
+  const income = summary.value.income
+  const fixed = summary.value.fixed_vs_variable.expenses_fixed
+  const variable = summary.value.fixed_vs_variable.expenses_variable
+  return {
+    income, fixed, variable,
+    free: income - fixed - variable,
+    fixedPct: income ? Math.round((fixed / income) * 100) : 0,
+  }
+})
+
+/** Was in den nächsten 30 Tagen abgebucht wird – für die Liquidität wichtiger
+ *  als jede Rückschau. */
+const upcoming = computed(() => {
+  const rows = recurringStatus.value || []
+  const today = new Date()
+  const limit = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 30)
+  const due = rows
+    .filter((r) => r.next_due_estimate && new Date(r.next_due_estimate) <= limit)
+    .sort((a, b) => a.next_due_estimate.localeCompare(b.next_due_estimate))
+  return { rows: due, total: due.reduce((s, r) => s + Number(r.expected_amount || 0), 0) }
+})
 
 const palette = ['#2563eb', '#0f766e', '#b45309', '#7c3aed', '#be185d', '#0369a1',
   '#4d7c0f', '#b91c1c', '#6b7280', '#92400e', '#065f46', '#1d4ed8']
@@ -420,6 +471,112 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         <h3>⚠ Handlungsbedarf</h3>
         <p><strong>{{ summary.unassigned_count }}</strong> Buchungen ohne Kategorie.</p>
         <router-link class="btn" :to="{ path: '/buchungen', query: { unassigned: 1 } }">Jetzt zuordnen</router-link>
+      </div>
+
+      <!-- Kumulierter Monatsverlauf: gegensteuern, solange der Monat läuft -->
+      <div v-if="isVisible('cumulative') && cumulative" class="tile wide" v-bind="tileProps('cumulative')">
+        <button class="tile-close" @click="hide('cumulative')">✕</button>
+        <h3>Ausgaben kumuliert – {{ cumulative.month }} gegen {{ cumulative.previous_month }}</h3>
+        <ChartCanvas type="line" :labels="cumulative.days"
+          :datasets="[
+            { label: cumulative.previous_month, data: cumulative.previous, borderColor: '#9aa7b4',
+              borderDash: [5, 4], pointRadius: 0, tension: .2 },
+            { label: cumulative.month, data: cumulative.current, borderColor: '#2563eb',
+              backgroundColor: '#2563eb22', fill: true, pointRadius: 0, tension: .2, spanGaps: false },
+          ]"
+          :options="{ scales: { x: { title: { display: true, text: 'Tag im Monat' } } } }" />
+        <p class="hint" style="margin: .4rem 0 0">Liegt die blaue Linie über der grauen, wird schneller
+          ausgegeben als im Vormonat.</p>
+      </div>
+
+      <!-- Budget-Fortschritt: die handlungsrelevanteste Ansicht überhaupt (4.8) -->
+      <div v-if="isVisible('budget_progress') && budgetStatus" class="tile wide" v-bind="tileProps('budget_progress')">
+        <button class="tile-close" @click="hide('budget_progress')">✕</button>
+        <h3>Budget-Fortschritt <span class="hint">{{ budgetStatus.month }}</span></h3>
+        <table v-if="budgetStatus.rows.length">
+          <tbody>
+            <tr v-for="row in budgetStatus.rows" :key="row.category_id">
+              <td style="width: 30%">{{ row.category_name }}</td>
+              <td>
+                <div class="budget-bar">
+                  <div :style="{ width: Math.min(100, row.percent) + '%',
+                                 background: `var(--ampel-${row.ampel})` }"></div>
+                </div>
+              </td>
+              <td class="num" style="width: 22%">
+                {{ fmtAmount(row.spent) }} <span class="hint">/ {{ fmtAmount(row.budget) }}</span>
+              </td>
+              <td class="num hint" style="width: 8%">{{ Math.round(row.percent) }} %</td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="hint">Noch keine Budgets angelegt.
+          <router-link to="/budgets">Jetzt anlegen</router-link></p>
+      </div>
+
+      <!-- Fixkosten-Sockel: wie viel vom Einkommen ist frei verfügbar? -->
+      <div v-if="isVisible('fixed_base') && fixedBase" class="tile wide" v-bind="tileProps('fixed_base')">
+        <button class="tile-close" @click="hide('fixed_base')">✕</button>
+        <h3>Fixkosten-Sockel</h3>
+        <p v-if="fixedBase.income">
+          Von <strong>{{ fmtAmount(fixedBase.income) }}</strong> Einnahmen sind
+          <strong>{{ fmtAmount(fixedBase.fixed) }}</strong> Fixkosten
+          (<strong>{{ fixedBase.fixedPct }} %</strong>),
+          <span :class="fixedBase.free >= 0 ? 'pos' : 'neg'">
+            {{ fmtAmount(fixedBase.free) }}</span> blieben übrig.
+        </p>
+        <p v-else class="hint">Keine Einnahmen im gewählten Zeitraum.</p>
+        <ChartCanvas type="bar" :labels="['Einnahmen']"
+          :datasets="[
+            { label: 'Fixkosten', data: [fixedBase.fixed], backgroundColor: '#b45309' },
+            { label: 'variable Ausgaben', data: [fixedBase.variable], backgroundColor: '#2563eb' },
+            { label: 'übrig', data: [Math.max(0, fixedBase.free)], backgroundColor: '#15803d' },
+          ]"
+          :options="{ indexAxis: 'y', scales: { x: { stacked: true }, y: { stacked: true } } }" />
+      </div>
+
+      <!-- Fälligkeiten: Liquiditätsblick nach vorn statt nur zurück (4.7 b) -->
+      <div v-if="isVisible('upcoming')" class="tile" v-bind="tileProps('upcoming')">
+        <button class="tile-close" @click="hide('upcoming')">✕</button>
+        <h3>Fällig in den nächsten 30 Tagen</h3>
+        <template v-if="upcoming.rows.length">
+          <div class="big">{{ fmtAmount(upcoming.total) }}</div>
+          <table>
+            <tbody>
+              <tr v-for="row in upcoming.rows.slice(0, 8)" :key="row.id">
+                <td><span class="ampel" :class="row.ampel"></span> {{ row.name }}</td>
+                <td class="hint">{{ row.next_due_estimate }}</td>
+                <td class="num">{{ fmtAmount(row.expected_amount) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
+        <p v-else class="hint">Keine wiederkehrende Position mit Fälligkeit in den nächsten 30 Tagen.</p>
+      </div>
+
+      <!-- Kategorie-Trend: WAS ist teurer geworden (Jahresvergleich ist zu grob) -->
+      <div v-if="isVisible('category_trend') && categoryTrend" class="tile wide" v-bind="tileProps('category_trend')">
+        <button class="tile-close" @click="hide('category_trend')">✕</button>
+        <h3>Kategorie-Trend <span class="hint">größte Ausgabenkategorien, letzte {{ TREND_MONTHS }} Monate</span></h3>
+        <ChartCanvas v-if="categoryTrend.rows.length" type="line" :labels="categoryTrend.months"
+          :datasets="categoryTrend.rows.map((r, i) => ({ label: r.category_name, data: r.values,
+            borderColor: palette[i % palette.length], tension: .25, pointRadius: 0 }))" />
+        <p v-else class="hint">Keine Ausgaben im Zeitraum.</p>
+      </div>
+
+      <!-- Top-Empfänger: wohin das Geld jenseits der Kategorie fließt -->
+      <div v-if="isVisible('top_counterparties') && topCounterparties" class="tile" v-bind="tileProps('top_counterparties')">
+        <button class="tile-close" @click="hide('top_counterparties')">✕</button>
+        <h3>Top-Empfänger im Zeitraum</h3>
+        <table v-if="topCounterparties.rows.length">
+          <tbody>
+            <tr v-for="row in topCounterparties.rows" :key="row.counterparty">
+              <td>{{ row.counterparty }} <span class="hint">{{ row.count }}×</span></td>
+              <td class="num neg">{{ fmtAmount(row.total) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="hint">Keine Ausgaben im gewählten Zeitraum.</p>
       </div>
 
       <div v-if="isVisible('cashflow') && cashflow" class="tile wide" v-bind="tileProps('cashflow')">

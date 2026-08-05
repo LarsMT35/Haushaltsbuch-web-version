@@ -1,5 +1,5 @@
 <script setup>
-import { inject, onMounted, ref } from 'vue'
+import { inject, onMounted, ref, watch } from 'vue'
 import { api } from '../api.js'
 
 const accounts = inject('accounts')
@@ -7,6 +7,8 @@ const rules = ref([])
 const categories = ref([])
 const error = ref('')
 const info = ref('')
+// Freitextsuche: bei gewachsenen Regelbeständen sonst nicht mehr auffindbar
+const search = ref('')
 const blank = () => ({ name: '', category_id: '', priority: 100, text_contains: '',
                        counterparty_contains: '', iban_equals: '', booking_text_contains: '',
                        amount_min: null, amount_max: null, account_id: null, active: true })
@@ -15,10 +17,17 @@ const editing = ref(null)
 const importInput = ref(null)
 
 async function load() {
-  rules.value = await api.get('/rules')
+  rules.value = await api.get('/rules', search.value ? { q: search.value } : {})
   categories.value = await api.get('/categories')
 }
 onMounted(load)
+
+// Tippen nicht bei jedem Anschlag ans Backend schicken
+let searchTimer = null
+watch(search, () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(load, 250)
+})
 
 async function save() {
   error.value = ''
@@ -89,6 +98,10 @@ async function importRules(e) {
     <div class="sticky-top">
       <div class="topbar">
         <h1>Kategorisierungsregeln</h1>
+        <!-- Freitextsuche über Name, alle Textkriterien und Zielkategorie (4.6) -->
+        <input v-model="search" placeholder="🔍 Regel, Händler, IBAN oder Kategorie…"
+               style="min-width: 18rem" />
+        <button v-if="search" @click="search = ''" title="Suche zurücksetzen">✕</button>
         <div class="spacer"></div>
         <!-- rückwirkende Neuanwendung dank aufbewahrter Rohdaten (4.6, Prinzip 2) -->
         <button @click="reapply(true)">Auf nicht zugeordnete anwenden</button>
@@ -97,8 +110,11 @@ async function importRules(e) {
         <button @click="importInput.click()">Import</button>
         <input ref="importInput" type="file" accept="application/json" hidden @change="importRules" />
       </div>
-      <p class="hint" style="margin: 0 0 .5rem">Kriterien einer Regel sind UND-verknüpft. Bei mehreren
-        Treffern gewinnt die kleinste Prioritätszahl (4.6).</p>
+      <p class="hint" style="margin: 0 0 .5rem">
+        <template v-if="search"><strong>{{ rules.length }}</strong> Treffer für „{{ search }}“ –
+          gesucht wird in Name, allen Textkriterien und der Zielkategorie.</template>
+        <template v-else>{{ rules.length }} Regeln. Kriterien einer Regel sind UND-verknüpft.
+          Bei mehreren Treffern gewinnt die kleinste Prioritätszahl (4.6).</template></p>
       <p v-if="error" class="error" style="margin: 0 0 .5rem">{{ error }}</p>
       <p v-if="info" class="hint" style="margin: 0 0 .5rem">✓ {{ info }}</p>
 
@@ -149,6 +165,11 @@ async function importRules(e) {
           <td style="white-space: nowrap; text-align: right">
             <button @click="edit(r)">Bearbeiten</button>
             <button @click="remove(r)">Löschen</button>
+          </td>
+        </tr>
+        <tr v-if="!rules.length">
+          <td colspan="5" class="hint" style="text-align: center; padding: 1.5rem">
+            Keine Regel gefunden<span v-if="search"> für „{{ search }}“</span>.
           </td>
         </tr>
       </tbody>

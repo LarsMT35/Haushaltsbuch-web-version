@@ -1,5 +1,6 @@
 """Kategorisierungsregeln (4.6) inkl. rückwirkender Neuanwendung."""
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -13,8 +14,29 @@ router = APIRouter(prefix="/rules", tags=["rules"])
 
 
 @router.get("", response_model=list[RuleOut])
-def list_rules(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return db.query(Rule).order_by(Rule.priority.asc(), Rule.id.asc()).all()
+def list_rules(q: str | None = Query(None, description="Freitextsuche über Name, Kriterien und Zielkategorie"),
+               active: bool | None = Query(None),
+               db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Regelliste, bei gewachsenen Beständen per Freitext durchsuchbar (4.6).
+
+    Gesucht wird in allen Textkriterien UND im Namen der Zielkategorie – so
+    findet „Lebensmittel" sowohl die Regel „Aldi" als auch „Rewe", ohne dass
+    man den Händlernamen kennen muss.
+    """
+    query = db.query(Rule)
+    if q and q.strip():
+        needle = f"%{q.strip().lower()}%"
+        query = query.outerjoin(Category, Rule.category_id == Category.id).filter(or_(
+            func.lower(Rule.name).like(needle),
+            func.lower(Rule.text_contains).like(needle),
+            func.lower(Rule.counterparty_contains).like(needle),
+            func.lower(Rule.iban_equals).like(needle),
+            func.lower(Rule.booking_text_contains).like(needle),
+            func.lower(Category.name).like(needle),
+        ))
+    if active is not None:
+        query = query.filter(Rule.active.is_(active))
+    return query.order_by(Rule.priority.asc(), Rule.id.asc()).all()
 
 
 @router.post("", response_model=RuleOut)

@@ -11,6 +11,10 @@ const page = ref({ total: 0, items: [] })
 const suggestions = ref([])
 const error = ref('')
 const info = ref('')
+// Optionale lokale KI (Ollama) – nur sichtbar, wenn eingerichtet
+const aiStatus = ref(null)
+const aiSuggestions = ref([])
+const aiBusy = ref(false)
 const limit = 100
 const offset = ref(0)
 
@@ -84,8 +88,32 @@ async function load() {
 onMounted(async () => {
   categories.value = await api.get('/categories')
   allTags.value = await api.get('/transactions/tags')
+  // schlägt fehl nie durch: ohne eingerichtete KI bleibt die Funktion aus
+  aiStatus.value = await api.get('/ai/status').catch(() => null)
   await load()
 })
+
+async function askAi() {
+  error.value = ''; info.value = ''; aiBusy.value = true
+  try {
+    const r = await api.post('/ai/suggest-categories', { limit: 25 })
+    aiSuggestions.value = r.suggestions
+    if (r.detail) info.value = r.detail
+    else info.value = `${r.suggestions.length} Vorschlag/Vorschläge von ${r.model} – bitte prüfen.`
+  } catch (e) { error.value = e.message } finally { aiBusy.value = false }
+}
+
+async function acceptAi(s) {
+  error.value = ''
+  try {
+    await api.put(`/transactions/${s.transaction_id}`, { category_id: s.category_id })
+    aiSuggestions.value = aiSuggestions.value.filter((x) => x.transaction_id !== s.transaction_id)
+    await load()
+  } catch (e) { error.value = e.message }
+}
+function rejectAi(s) {
+  aiSuggestions.value = aiSuggestions.value.filter((x) => x.transaction_id !== s.transaction_id)
+}
 watch(filter, () => { offset.value = 0; load() }, { deep: true })
 watch(() => route.query, () => {
   filter.value.account_id = route.query.account_id || ''
@@ -168,6 +196,10 @@ function doExport() {
       <div class="spacer"></div>
       <button @click="showManual = !showManual">+ Manuelle Buchung</button>
       <button @click="detectTransfers" title="Sucht Umbuchungspaare mit IBAN-Beleg automatisch und legt Gegenbuchungen für Kategorien mit Umbuchungs-Zielkonto an (z.B. Depot, 4.4)">Umbuchungen erkennen</button>
+      <!-- nur wenn eine lokale Ollama-Instanz eingerichtet ist -->
+      <button v-if="aiStatus?.enabled" :disabled="aiBusy || !aiStatus.reachable"
+              :title="aiStatus.reachable ? `Fragt ${aiStatus.model} auf ${aiStatus.url} nach Kategorien für nicht zugeordnete Buchungen` : aiStatus.detail"
+              @click="askAi">{{ aiBusy ? 'KI denkt …' : '🤖 KI-Vorschläge' }}</button>
       <button @click="doExport">Export CSV</button>
     </div>
 
@@ -212,6 +244,30 @@ function doExport() {
 
     <p v-if="error" class="error">{{ error }}</p>
     <p v-if="info" class="hint">✓ {{ info }}</p>
+
+    <!-- KI-Vorschläge: die KI ordnet nie selbst zu, jeder Vorschlag wird bestätigt -->
+    <div v-if="aiSuggestions.length" class="tile warn" style="margin-bottom: 1rem">
+      <h3>🤖 Kategorie-Vorschläge der lokalen KI ({{ aiSuggestions.length }})</h3>
+      <p class="hint">Vorschläge von <strong>{{ aiStatus?.model }}</strong> – nichts wird automatisch
+        übernommen. Passt einer dauerhaft, danach in der Zeile „↻ Regel“ klicken, dann greift künftig
+        die Regel statt der KI.</p>
+      <table>
+        <tbody>
+          <tr v-for="s in aiSuggestions" :key="s.transaction_id">
+            <td>{{ fmtDate(s.booking_date) }}</td>
+            <td><strong>{{ s.counterparty }}</strong><br /><span class="hint">{{ s.purpose }}</span></td>
+            <td class="num neg">{{ fmtAmount(s.amount) }}</td>
+            <td>→ <strong>{{ s.category_name }}</strong>
+              <span class="badge gray">{{ Math.round(s.confidence * 100) }} %</span>
+              <br /><span class="hint">{{ s.reason }}</span></td>
+            <td style="white-space: nowrap; text-align: right">
+              <button class="primary" @click="acceptAi(s)">Übernehmen</button>
+              <button @click="rejectAi(s)">Verwerfen</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <div v-if="suggestions.length" class="tile warn" style="margin-bottom: 1rem">
       <h3>Mögliche Umbuchungen ({{ suggestions.length }})</h3>

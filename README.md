@@ -179,6 +179,30 @@ automatisch aus.
   Fixkosten-Anteil in Prozent direkt an der Kachel
 - ✅ Kontenliste mit **Summenzeile**, nach Haushalt/privat gruppiert
 
+### v1.5 – Regelsuche, mehr Auswertungen, optionale lokale KI
+
+- ✅ **Freitextsuche über die Regeln**: durchsucht Name, alle Textkriterien
+  *und* die Zielkategorie – „Lebensmittel“ findet so auch die Regeln „Aldi“
+  und „Rewe“, ohne den Händlernamen zu kennen
+- ✅ **Sechs zusätzliche Dashboard-Kacheln**, frei zuschaltbar und je Bereich
+  getrennt anordenbar:
+  | Kachel | beantwortet |
+  |---|---|
+  | Monatsverlauf kumuliert | „Bin ich schneller unterwegs als im Vormonat?“ – tagesgenau, *während* der Monat läuft |
+  | Budget-Fortschritt | Soll/Ist je Kategorie mit Ampel, direkt auf der Startseite |
+  | Fixkosten-Sockel | „Wie viel vom Einkommen ist überhaupt frei verfügbar?“ |
+  | Fällig in 30 Tagen | anstehende Abbuchungen inkl. Summe (Liquiditätsblick nach vorn) |
+  | Kategorie-Trend | was ist über die Monate teurer geworden (Jahresvergleich ist dafür zu grob) |
+  | Top-Empfänger | wohin das Geld jenseits der Kategorie fließt |
+- ✅ **Optionale Anbindung einer lokalen Ollama-Instanz** (`OLLAMA_URL`,
+  Standard: aus). Schlägt Kategorien für Buchungen vor, bei denen keine Regel
+  greift. Bewusst eng gefasst: nur die eigene Instanz im eigenen Netz,
+  übertragen werden nur Gegenpartei/Zweck/Betrag (keine IBANs, keine Salden),
+  erfundene Kategorien werden verworfen, und **zugeordnet wird erst nach
+  Bestätigung** – wie bei den Umbuchungs-Vorschlägen. Ohne Konfiguration
+  erscheint die Funktion gar nicht erst; die App bleibt vollständig ohne KI
+  nutzbar (Prinzip 6: die Fachlogik bleibt regelbasiert im Backend).
+
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).
 

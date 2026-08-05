@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .db import Base, SessionLocal, engine
-from .api import (accounts, auth, budgets, categories, dashboard, imports, recurring,
+from .api import (accounts, ai, auth, budgets, categories, dashboard, imports, recurring,
                   rules, transactions, transfers, users)
 
 APP_VERSION = "1.0.0"
@@ -39,7 +39,7 @@ app.add_middleware(
 api_v1 = APIRouter(prefix="/api/v1")
 for router in (auth.router, users.router, accounts.router, categories.router,
                rules.router, transactions.router, imports.router, transfers.router,
-               dashboard.router, budgets.router, recurring.router):
+               dashboard.router, budgets.router, recurring.router, ai.router):
     api_v1.include_router(router)
 app.include_router(api_v1)
 

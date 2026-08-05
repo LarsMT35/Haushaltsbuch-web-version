@@ -4,6 +4,7 @@ Alle Berechnungen laufen im Backend (Prinzip 6) über die Referenzwährung.
 Umbuchungen zählen in Einnahmen/Ausgaben nicht mit, bleiben aber in der
 "Bewegung Sparkonten" sichtbar (4.4).
 """
+import calendar
 from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
@@ -16,7 +17,11 @@ from ..deps import accessible_account_ids, get_current_user, require_account_acc
 from ..models import Account, Category, DashboardLayout, Transaction, User
 from ..schemas import (
     AccountBalance,
+    CategoryTrendOut,
+    CategoryTrendRow,
     CategoryValue,
+    CounterpartyRow,
+    CumulativeOut,
     DashboardSummary,
     DepositorMonth,
     DepositsOut,
@@ -25,6 +30,7 @@ from ..schemas import (
     NetWorthOut,
     NetWorthSeries,
     SavingsRateOut,
+    TopCounterpartiesOut,
     YearComparisonOut,
     YearComparisonRow,
 )
@@ -308,6 +314,153 @@ def deposits(account_id: int, date_from: date | None = None, date_to: date | Non
               for m in months]
     return DepositsOut(account_id=account_id, months=months,
                        depositors=sorted(depositors), series=series)
+
+
+def _scoped_ids(db: Session, user: User, account_ids: list[int] | None) -> list[int]:
+    ids = accessible_account_ids(db, user)
+    if not account_ids:
+        return ids
+    return [aid for aid in account_ids if aid in ids] or ids
+
+
+def _spend_parts(t: Transaction, transfer_like_ids: set[int]):
+    """Ausgabenanteile einer Buchung je Kategorie (Splits anteilig).
+    Umbuchungen und "wie Umbuchung"-Kategorien zählen nicht als Ausgabe (4.9)."""
+    if t.transfer_id:
+        return []
+    parts = ([(s.category_id, s.amount) for s in t.splits]
+             if t.splits else [(t.category_id, t.amount_ref)])
+    return [(cid, -amount) for cid, amount in parts
+            if amount < 0 and cid not in transfer_like_ids]
+
+
+@router.get("/cumulative", response_model=CumulativeOut)
+def cumulative(month: str | None = None, account_ids: list[int] | None = Query(None),
+               user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Tagesgenau aufsummierte Ausgaben des Monats gegen den Vormonat (4.9).
+
+    Beantwortet die Frage "bin ich dieses Mal früher dran als sonst?" –
+    während des Monats, solange man noch gegensteuern kann.
+    """
+    today = date.today()
+    if month:
+        year, mon = int(month[:4]), int(month[5:7])
+    else:
+        year, mon = today.year, today.month
+    first = date(year, mon, 1)
+    prev_last = first - timedelta(days=1)
+    prev_first = prev_last.replace(day=1)
+    last = date(year, mon, calendar.monthrange(year, mon)[1])
+
+    filter_ids = _scoped_ids(db, user, account_ids)
+    transfer_like_ids = {cid for (cid,) in db.query(Category.id)
+                         .filter(Category.is_transfer_like.is_(True)).all()}
+    txs = (db.query(Transaction)
+           .filter(Transaction.account_id.in_(filter_ids),
+                   Transaction.booking_date >= prev_first,
+                   Transaction.booking_date <= last)
+           .all())
+
+    per_day_current: dict[int, Decimal] = defaultdict(Decimal)
+    per_day_previous: dict[int, Decimal] = defaultdict(Decimal)
+    for t in txs:
+        spend = sum((amount for _cid, amount in _spend_parts(t, transfer_like_ids)), Decimal("0"))
+        if not spend:
+            continue
+        if first <= t.booking_date <= last:
+            per_day_current[t.booking_date.day] += spend
+        elif prev_first <= t.booking_date <= prev_last:
+            per_day_previous[t.booking_date.day] += spend
+
+    days = list(range(1, calendar.monthrange(year, mon)[1] + 1))
+    current, previous = [], []
+    run_c = run_p = Decimal("0")
+    for d in days:
+        run_c += per_day_current.get(d, Decimal("0"))
+        run_p += per_day_previous.get(d, Decimal("0"))
+        # laufender Monat endet am heutigen Tag, sonst fiele die Linie flach aus
+        current.append(float(run_c) if not (year == today.year and mon == today.month and d > today.day) else None)
+        previous.append(float(run_p))
+
+    return CumulativeOut(month=f"{year:04d}-{mon:02d}",
+                         previous_month=prev_first.strftime("%Y-%m"),
+                         days=days, current=current, previous=previous)
+
+
+@router.get("/category-trend", response_model=CategoryTrendOut)
+def category_trend(date_from: date | None = None, date_to: date | None = None,
+                   account_ids: list[int] | None = Query(None), limit: int = 5,
+                   user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Monatsverlauf der größten Ausgabenkategorien (4.9) – zeigt, WAS teurer
+    geworden ist; der Jahresvergleich ist dafür zu grobkörnig."""
+    if date_to is None:
+        date_to = date.today()
+    if date_from is None:
+        date_from = (date_to.replace(day=1) - timedelta(days=334)).replace(day=1)
+    months = _month_range(date_from, date_to)
+
+    filter_ids = _scoped_ids(db, user, account_ids)
+    all_categories = {c.id: c for c in db.query(Category).all()}
+    transfer_like_ids = {cid for cid, c in all_categories.items() if c.is_transfer_like}
+    txs = (db.query(Transaction)
+           .filter(Transaction.account_id.in_(filter_ids),
+                   Transaction.booking_date >= date_from,
+                   Transaction.booking_date <= date_to)
+           .all())
+
+    per: dict[tuple[int | None, str], Decimal] = defaultdict(Decimal)
+    totals: dict[int | None, Decimal] = defaultdict(Decimal)
+    for t in txs:
+        m = t.booking_date.strftime("%Y-%m")
+        if m not in months:
+            continue
+        for cid, amount in _spend_parts(t, transfer_like_ids):
+            per[(cid, m)] += amount
+            totals[cid] += amount
+
+    top = sorted(totals, key=lambda cid: -totals[cid])[:max(1, limit)]
+    rows = [CategoryTrendRow(
+        category_id=cid,
+        category_name="Nicht zugeordnet" if cid is None else
+                      (all_categories[cid].name if cid in all_categories else f"#{cid}"),
+        values=[float(per.get((cid, m), Decimal("0"))) for m in months],
+    ) for cid in top]
+    return CategoryTrendOut(months=months, rows=rows)
+
+
+@router.get("/top-counterparties", response_model=TopCounterpartiesOut)
+def top_counterparties(date_from: date | None = None, date_to: date | None = None,
+                       account_ids: list[int] | None = Query(None), limit: int = 10,
+                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Wohin das Geld tatsächlich fließt – jenseits der Kategorie (4.9)."""
+    if date_to is None:
+        date_to = date.today()
+    if date_from is None:
+        date_from = (date_to.replace(day=1) - timedelta(days=334)).replace(day=1)
+
+    filter_ids = _scoped_ids(db, user, account_ids)
+    transfer_like_ids = {cid for (cid,) in db.query(Category.id)
+                         .filter(Category.is_transfer_like.is_(True)).all()}
+    txs = (db.query(Transaction)
+           .filter(Transaction.account_id.in_(filter_ids),
+                   Transaction.booking_date >= date_from,
+                   Transaction.booking_date <= date_to,
+                   Transaction.transfer_id.is_(None))
+           .all())
+
+    totals: dict[str, Decimal] = defaultdict(Decimal)
+    counts: dict[str, int] = defaultdict(int)
+    for t in txs:
+        spend = sum((amount for _cid, amount in _spend_parts(t, transfer_like_ids)), Decimal("0"))
+        if spend <= 0:
+            continue
+        name = (t.counterparty or "").strip() or "Unbekannt"
+        totals[name] += spend
+        counts[name] += 1
+
+    ranked = sorted(totals, key=lambda n: -totals[n])[:max(1, limit)]
+    return TopCounterpartiesOut(rows=[
+        CounterpartyRow(counterparty=n, total=float(totals[n]), count=counts[n]) for n in ranked])
 
 
 DASHBOARD_MODES = ("gemeinsam", "persoenlich", "gesamt")

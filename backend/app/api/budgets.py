@@ -88,17 +88,26 @@ def set_thresholds(payload: BudgetThresholds, db: Session = Depends(get_db),
 @router.get("/status", response_model=BudgetStatusOut)
 def budget_status(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
                   account_id: int | None = None,
+                  account_ids: list[int] | None = Query(None),
                   user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Soll/Ist je Kategorie für einen Monat mit Ampel (4.8).
 
     Splits zählen anteilig auf ihre Kategorie; Umbuchungen zählen nicht.
+    `account_ids` (Mehrfachauswahl) hat Vorrang vor dem einzelnen `account_id`
+    und trägt die Bereichstrennung des Dashboards mit (4.9.1).
     """
     year, mon = int(month[:4]), int(month[5:7])
     first = date(year, mon, 1)
     last = date(year, mon, calendar.monthrange(year, mon)[1])
 
     ids = accessible_account_ids(db, user)
-    filter_ids = [account_id] if account_id is not None and account_id in ids else ids
+    if account_ids:
+        filter_ids = [a for a in account_ids if a in ids] or ids
+    elif account_id is not None and account_id in ids:
+        filter_ids = [account_id]
+    else:
+        filter_ids = ids
+    scoped = filter_ids is not ids
 
     # Gültiges Budget je (Kategorie, Konto): jüngstes valid_from <= Monatsende
     budgets = (db.query(Budget)
@@ -108,7 +117,8 @@ def budget_status(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
                .all())
     effective: dict[int, Budget] = {}
     for b in budgets:
-        if account_id is not None and b.account_id is not None and b.account_id != account_id:
+        # kontogebundene Budgets nur, wenn ihr Konto in der Auswahl liegt
+        if scoped and b.account_id is not None and b.account_id not in filter_ids:
             continue
         effective[b.category_id] = b  # spätere valid_from überschreibt frühere
 

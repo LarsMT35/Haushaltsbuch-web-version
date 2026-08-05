@@ -592,6 +592,77 @@ class DepositsOut(BaseModel):
     series: list[DepositorMonth]
 
 
+class CumulativeOut(BaseModel):
+    """Tagesgenau aufsummierte Ausgaben: zeigt WÄHREND des Monats, ob man
+    schneller unterwegs ist als sonst – nicht erst hinterher (4.9)."""
+
+    month: str
+    previous_month: str
+    days: list[int]
+    # None ab dem Tag nach heute: der laufende Monat endet am aktuellen Tag,
+    # sonst liefe die Linie flach bis zum Monatsende weiter
+    current: list[float | None]
+    previous: list[float]
+
+
+class CategoryTrendRow(BaseModel):
+    category_id: int | None
+    category_name: str
+    values: list[float]
+
+
+class CategoryTrendOut(BaseModel):
+    """Monatlicher Verlauf der größten Ausgabenkategorien – der
+    Jahresvergleich ist dafür zu grob (4.9)."""
+
+    months: list[str]
+    rows: list[CategoryTrendRow]
+
+
+class CounterpartyRow(BaseModel):
+    counterparty: str
+    total: float
+    count: int
+
+
+class TopCounterpartiesOut(BaseModel):
+    rows: list[CounterpartyRow]
+
+
+# ------------------------------------------ Optionale lokale KI (Ollama, 4.6)
+
+class AiStatusOut(BaseModel):
+    enabled: bool                     # OLLAMA_URL gesetzt
+    reachable: bool                   # Instanz antwortet
+    url: str = ""
+    model: str = ""
+    models: list[str] = []
+    detail: str | None = None
+
+
+class AiSuggestRequest(BaseModel):
+    limit: int = 25
+    account_ids: list[int] | None = None
+
+
+class AiCategorySuggestion(BaseModel):
+    transaction_id: int
+    booking_date: date
+    counterparty: str
+    purpose: str
+    amount: float
+    category_id: int
+    category_name: str
+    confidence: float
+    reason: str
+
+
+class AiSuggestionsOut(BaseModel):
+    model: str
+    suggestions: list[AiCategorySuggestion]
+    detail: str | None = None
+
+
 # --------------------------------------------------- Export / Import (4.11)
 # Referenzierung über Namen statt IDs, damit Export/Import auch zwischen
 # unterschiedlichen Installationen funktioniert (z.B. Umzug, Vorlage teilen).
