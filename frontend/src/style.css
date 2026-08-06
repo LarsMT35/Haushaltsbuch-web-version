@@ -1,6 +1,13 @@
 /* Farbschemata pro Nutzer wählbar (4.10). Die Budget-Ampel und Warnfarben
-   sind bewusst AUSGENOMMEN und ändern sich mit keinem Schema. */
+   sind bewusst AUSGENOMMEN und ändern sich mit keinem Schema.
+
+   Jedes Schema setzt die GESAMTE Palette (bg/surface/text/muted/border/
+   accent/accent-soft) statt nur den Akzent – sonst bleibt der Unterschied
+   zwischen den Schemata kaum wahrnehmbar. Dark Mode ist je Schema eigens
+   abgestimmt (nicht ein einziges generisches Dunkel für alle), damit sich
+   auch dort ein "Ozean" spürbar von einer "Beere" unterscheidet. */
 :root {
+  /* hell – Standard, sachlich-neutrales Blau */
   --bg: #f4f6f8;
   --surface: #ffffff;
   --text: #1c2530;
@@ -17,16 +24,116 @@
   --warn-bg: #fef3c7;
   --warn-border: #f59e0b;
 }
+
+/* ruhig – Waldgrün */
 [data-scheme='ruhig'] {
-  --accent: #0f766e;
-  --accent-soft: #ccfbf1;
-  --bg: #f2f7f6;
+  --bg: #eef5f0;
+  --surface: #fbfdfb;
+  --text: #142a1e;
+  --muted: #567161;
+  --border: #cde3d5;
+  --accent: #15803d;
+  --accent-soft: #dcfce7;
 }
+[data-scheme='ruhig'][data-dark='true'] {
+  --bg: #0d1712;
+  --surface: #16231b;
+  --text: #dcf3e4;
+  --muted: #86a696;
+  --border: #24392c;
+  --accent: #34d399;
+  --accent-soft: #163d2b;
+  --warn-bg: #3a3410;
+}
+
+/* warm – Terrakotta */
 [data-scheme='warm'] {
-  --accent: #b45309;
-  --accent-soft: #fde8cc;
-  --bg: #faf6f0;
+  --bg: #fbf1e6;
+  --surface: #fffaf3;
+  --text: #3a2413;
+  --muted: #8a6a4d;
+  --border: #ecd9bd;
+  --accent: #c2410c;
+  --accent-soft: #ffe4cc;
 }
+[data-scheme='warm'][data-dark='true'] {
+  --bg: #1c130a;
+  --surface: #2a1c0f;
+  --text: #f6e6d3;
+  --muted: #b89877;
+  --border: #45301a;
+  --accent: #fb923c;
+  --accent-soft: #47280f;
+  --warn-bg: #4a3410;
+}
+
+/* ozean – Tiefblau, kühl und ruhig */
+[data-scheme='ozean'] {
+  --bg: #eaf2f8;
+  --surface: #ffffff;
+  --text: #0b2540;
+  --muted: #4d6b85;
+  --border: #c3d9e8;
+  --accent: #0369a1;
+  --accent-soft: #cfeaff;
+}
+[data-scheme='ozean'][data-dark='true'] {
+  --bg: #071522;
+  --surface: #0f2136;
+  --text: #dcedf9;
+  --muted: #7ba0bc;
+  --border: #1b3652;
+  --accent: #38bdf8;
+  --accent-soft: #123049;
+  --warn-bg: #3a3410;
+}
+
+/* beere – Aubergine/Fuchsia, kräftig */
+[data-scheme='beere'] {
+  --bg: #f8eef7;
+  --surface: #fffbfe;
+  --text: #341530;
+  --muted: #7d5977;
+  --border: #ecd3ea;
+  --accent: #a21caf;
+  --accent-soft: #fae0fb;
+}
+[data-scheme='beere'][data-dark='true'] {
+  --bg: #1c0e1a;
+  --surface: #2b1628;
+  --text: #f6dff4;
+  --muted: #b98fb3;
+  --border: #452140;
+  --accent: #e879f9;
+  --accent-soft: #451f42;
+  --warn-bg: #3a3410;
+}
+
+/* kontrast – hoher Kontrast für schlechte Lesbarkeit/Displays (Barrierefreiheit) */
+[data-scheme='kontrast'] {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --text: #000000;
+  --muted: #333333;
+  --border: #000000;
+  --accent: #0033cc;
+  --accent-soft: #cfe0ff;
+  --positive: #006600;
+  --negative: #cc0000;
+}
+[data-scheme='kontrast'][data-dark='true'] {
+  --bg: #000000;
+  --surface: #000000;
+  --text: #ffffff;
+  --muted: #cccccc;
+  --border: #ffffff;
+  --accent: #66aaff;
+  --accent-soft: #002a66;
+  --warn-bg: #332900;
+}
+
+/* Generischer Dark-Mode-Fallback – greift nur, wenn ein Schema (noch) keine
+   eigene [data-dark='true']-Variante definiert (Kompatibilität). */
 [data-dark='true'] {
   --bg: #10161d;
   --surface: #1a232e;

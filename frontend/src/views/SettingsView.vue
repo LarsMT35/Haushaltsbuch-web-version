@@ -132,9 +132,12 @@ async function changePassword() {
         <div class="form-row">
           <div><label>Farbschema</label>
             <select v-model="settings.color_scheme" @change="saveSettings">
-              <option value="hell">Hell & sachlich</option>
-              <option value="ruhig">Ruhig (grün)</option>
-              <option value="warm">Warm</option>
+              <option value="hell">Hell & sachlich (Blau)</option>
+              <option value="ruhig">Ruhig (Waldgrün)</option>
+              <option value="warm">Warm (Terrakotta)</option>
+              <option value="ozean">Ozean (Tiefblau)</option>
+              <option value="beere">Beere (Aubergine)</option>
+              <option value="kontrast">Kontrastreich (Barrierefreiheit)</option>
             </select></div>
           <div><label>Dunkles Design</label>
             <input type="checkbox" v-model="settings.dark_mode" @change="saveSettings" /></div>

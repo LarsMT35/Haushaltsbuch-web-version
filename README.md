@@ -129,7 +129,11 @@ automatisch aus.
   Umbuchungen in beide Richtungen – 200 € aufs Tagesgeld und 50 € zurück
   ergeben 150 € gespart; zum Vergleich das rechnerische Sparpotenzial),
   Jahresvergleich pro Kategorie
-- ✅ Design-Einstellungen (Farbschemata + Dark Mode, seit v1.0)
+- ✅ Design-Einstellungen (seit v1.0): **6 Farbschemata** (Hell, Ruhig/Waldgrün,
+  Warm/Terrakotta, Ozean/Tiefblau, Beere/Aubergine, Kontrastreich für
+  Barrierefreiheit) je mit eigenem Dark Mode, jedes Schema setzt die
+  vollständige Palette statt nur den Akzent – Budget-Ampel und Warnfarben
+  bleiben bewusst schema-unabhängig konstant
 - ✅ Rückwirkende Regelanwendung (seit v1.0)
 
 ### v1.2 – Haushalts-Logik
