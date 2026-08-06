@@ -342,7 +342,10 @@ async function load() {
   const summaryParams = { ...range, account_ids }
   if (filter.value.category_ids.length) summaryParams.category_ids = filter.value.category_ids
   const trendParams = { ...trendRange(), account_ids }
-  const month = (range.date_to || fmtDateLocal(new Date())).slice(0, 7)
+  // Die Periode zum gewählten Zeitraum bestimmt das Backend: bei
+  // verschobenem Starttag gehört der 30.08. schon zum September, ein
+  // Abschneiden der ersten sieben Zeichen träfe den falschen Monat.
+  const dateInPeriod = range.date_to || fmtDateLocal(new Date())
 
   // Nur laden, was gerade auch sichtbar ist – ausgeblendete Kacheln kosten
   // sonst bei jedem Filterwechsel unnötige Abfragen.
@@ -358,8 +361,9 @@ async function load() {
     optional('savings_rate', () => api.get('/dashboard/savings-rate', trendParams)),
     optional('year_comparison', () => api.get('/dashboard/year-comparison', { account_ids })),
     api.get('/recurring-items/status').then((r) => r.rows),
-    optional('budget_progress', () => api.get('/budgets/status', { month, account_ids })),
-    optional('cumulative', () => api.get('/dashboard/cumulative', { month, account_ids })),
+    optional('budget_progress', () => api.get('/budgets/status',
+      { date_in_period: dateInPeriod, account_ids })),
+    optional('cumulative', () => api.get('/dashboard/cumulative', { month: dateInPeriod.slice(0, 7), account_ids })),
     optional('category_trend', () => api.get('/dashboard/category-trend', { ...trendParams, limit: 5 })),
     optional('top_counterparties', () => api.get('/dashboard/top-counterparties', { ...range, account_ids, limit: 10 })),
   ])
@@ -679,7 +683,11 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
                 @pointerdown="startResize($event, 'budget_progress')"
                 @dblclick="resetSize('budget_progress')"></button>
-        <h3>Budget-Fortschritt <span class="hint">{{ budgetStatus.month }}</span></h3>
+        <!-- Zeitraum ausschreiben: "2026-08" allein sagt bei verschobenem
+             Starttag nicht, welche Tage gezählt werden -->
+        <h3>Budget-Fortschritt
+          <span class="hint">Abrechnungsmonat {{ budgetStatus.month }}
+            ({{ fmtDate(budgetStatus.date_from) }} – {{ fmtDate(budgetStatus.date_to) }})</span></h3>
         <div class="tile-scroll">
         <table v-if="budgetStatus.rows.length">
           <tbody>

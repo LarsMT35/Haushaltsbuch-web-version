@@ -15,8 +15,8 @@ from ..db import get_db
 from ..deps import accessible_account_ids, get_current_user, require_account_access, require_admin
 from ..models import Account, AppSetting, Budget, Category, Transaction, User, UserSettings
 from ..schemas import (BudgetCreate, BudgetOut, BudgetStatusOut, BudgetStatusRow,
-                       BudgetThresholds, PeriodBoundsOut, PeriodSettingIn,
-                       PeriodSettingOut)
+                       BudgetThresholds, BudgetUpdate, PeriodBoundsOut,
+                       PeriodSettingIn, PeriodSettingOut)
 from ..services.audit import log
 from ..services.periods import (SETTING_KEY as PERIOD_KEY, current_period,
                                 effective_period, get_start_day, normalize_start_day,
@@ -90,11 +90,20 @@ def set_thresholds(payload: BudgetThresholds, db: Session = Depends(get_db),
 
 
 @router.get("/status", response_model=BudgetStatusOut)
-def budget_status(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
+def budget_status(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+                  date_in_period: date | None = None,
                   account_id: int | None = None,
                   account_ids: list[int] | None = Query(None),
                   user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Soll/Ist je Budget für einen Abrechnungsmonat mit Ampel (4.8).
+
+    Der Zeitraum lässt sich auf drei Arten angeben, absteigend spezifisch:
+    `month` (fertiger Periodenschlüssel), `date_in_period` (irgendein Datum –
+    das Backend bestimmt die zugehörige Periode) oder gar nichts (laufende
+    Periode). `date_in_period` gibt es, damit die Oberfläche aus einem
+    gewählten Zeitraum nicht selbst einen Periodenschlüssel rechnen muss:
+    mit verschobenem Starttag gehört der 30.08. bereits zum September, ein
+    bloßes Abschneiden der ersten sieben Zeichen träfe den falschen Monat.
 
     Ein kontogebundenes Budget gilt **nur für dieses Konto**: es erscheint nur
     im zugehörigen Dashboard-Bereich und verbraucht sich ausschließlich an
@@ -106,6 +115,9 @@ def budget_status(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
     und trägt die Bereichstrennung des Dashboards mit (4.9.1).
     """
     start_day = get_start_day(db, user)
+    if month is None:
+        month = (period_key(date_in_period, start_day) if date_in_period is not None
+                 else current_period(start_day))
     first, last = period_bounds(month, start_day)
 
     ids = accessible_account_ids(db, user)
@@ -171,7 +183,8 @@ def budget_status(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
             account_id=acc_id, account_name=account_names.get(acc_id) if acc_id else None,
             budget=budget_amount, spent=used, percent=round(percent, 1), ampel=ampel))
     rows.sort(key=lambda r: -r.percent)
-    return BudgetStatusOut(month=month, thresholds=th, rows=rows)
+    return BudgetStatusOut(month=month, date_from=first, date_to=last,
+                           thresholds=th, rows=rows)
 
 
 # ------------------------------------------------ Abrechnungsmonat (4.9)
@@ -231,3 +244,43 @@ def set_period_setting(payload: PeriodSettingIn, db: Session = Depends(get_db),
     log(db, user.id, "user_settings", str(user.id), "period", {"start_day": day})
     db.commit()
     return _period_out(day, is_own_choice=True)
+
+
+# ACHTUNG, Reihenfolge: dieser Pfad muss NACH allen festen PUT-Pfaden stehen
+# (/thresholds, /period). FastAPI prüft die Routen in Registrierungsreihenfolge –
+# weiter oben verschluckte "/{budget_id}" die festen Pfade und versuchte,
+# "thresholds" als Zahl zu lesen (422).
+@router.put("/{budget_id}", response_model=BudgetOut)
+def update_budget(budget_id: int, payload: BudgetUpdate,
+                  user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Bestehendes Budget korrigieren.
+
+    Bewusst ergaenzend zur Versionierung (4.8), nicht als Ersatz: einen
+    Vertipper im Betrag will man richtigstellen, ohne eine zweite Version
+    anzulegen, die es nie gab. Eine Aenderung, die erst ab einem Datum gelten
+    soll, bleibt ein neuer Eintrag mit eigenem valid_from – sonst wuerde sich
+    rueckwirkend die Vergangenheit aendern.
+    """
+    budget = db.get(Budget, budget_id)
+    if budget is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Budget nicht gefunden")
+    if budget.account_id is not None:
+        require_account_access(db, user, budget.account_id, "editor")
+
+    data = payload.model_dump(exclude_unset=True)
+    if "category_id" in data and db.get(Category, data["category_id"]) is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Kategorie nicht gefunden")
+    if data.get("account_id") is not None:
+        # auch das ZIEL muss einem gehoeren, sonst liesse sich ein Budget auf
+        # ein fremdes Konto umhaengen
+        require_account_access(db, user, data["account_id"], "editor")
+    if "amount" in data and data["amount"] <= 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Betrag muss groesser als 0 sein")
+
+    for field, value in data.items():
+        setattr(budget, field, value)
+    log(db, user.id, "budget", budget.id, "update",
+        {k: str(v) for k, v in data.items()})
+    db.commit()
+    db.refresh(budget)
+    return budget

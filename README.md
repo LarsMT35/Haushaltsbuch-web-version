@@ -303,6 +303,24 @@ automatisch aus.
   sie übernehmen das Farbschema samt Dark Mode und veralten nicht bei jeder
   Layoutänderung.
 
+### v1.7.3 – Budgets am Abrechnungsmonat und bearbeitbar
+
+- ✅ **Budgets bearbeiten statt löschen und neu anlegen** (`PUT /budgets/{id}`):
+  Betrag, Konto, Kategorie und Gültigkeitsdatum lassen sich am bestehenden
+  Eintrag korrigieren. Das ergänzt die Versionierung, ersetzt sie nicht: eine
+  Änderung, die erst ab einem Datum gelten soll, bleibt ein neuer Eintrag mit
+  eigenem `valid_from` – sonst würde sich rückwirkend die Vergangenheit ändern.
+- ✅ **Budgets folgen sichtbar dem Abrechnungsmonat.** Der Verbrauch zählte
+  schon immer die richtige Periode, aber die Oberfläche schnitt den Monat aus
+  dem Enddatum heraus (`"2026-08-30".slice(0,7)`) – mit verschobenem Starttag
+  gehört der 30.08. bereits zum September, also traf sie den falschen Monat.
+  Jetzt bestimmt das Backend die Periode (`date_in_period`), und Kachel wie
+  Budgetseite schreiben den Zeitraum aus: *Abrechnungsmonat 2026-08
+  (27.07.2026 – 26.08.2026)*.
+- ✅ **Monatliche Budgets wandern mit**: In jeder Periode beginnt der Verbrauch
+  wieder bei 0. Auf der Budgetseite lässt sich mit *‹ › · Laufender Zeitraum*
+  durch die Perioden blättern, und eine Spalte **Rest** zeigt, was übrig ist.
+
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).
 

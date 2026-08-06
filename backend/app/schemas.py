@@ -381,6 +381,16 @@ class BudgetCreate(BaseModel):
     valid_from: date
 
 
+class BudgetUpdate(BaseModel):
+    """Korrektur eines bestehenden Eintrags. Alle Felder optional – nur was
+    gesetzt ist, wird geändert (Vertipper im Betrag, falsches Konto)."""
+
+    category_id: int | None = None
+    account_id: int | None = None
+    amount: Decimal | None = None
+    valid_from: date | None = None
+
+
 class BudgetThresholds(BaseModel):
     """Ampel-Schwellwerte in Prozent, konfigurierbar (4.8)."""
 
@@ -404,6 +414,10 @@ class BudgetStatusRow(BaseModel):
 
 class BudgetStatusOut(BaseModel):
     month: str
+    # Grenzen des Abrechnungsmonats: mit verschobenem Starttag sagt "2026-08"
+    # allein nicht, welche Tage gemeint sind
+    date_from: date
+    date_to: date
     thresholds: BudgetThresholds
     rows: list[BudgetStatusRow]
 
