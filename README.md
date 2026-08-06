@@ -358,6 +358,18 @@ automatisch aus.
   Rein über CSS gelöst (`data-tip`), also ohne JavaScript und ohne hängende
   Kästen nach einem Neuzeichnen; auf Touch-Geräten bleibt er aus.
 
+### v1.7.6 – Kurzanleitung erklärt jede Kachel, Dashboard wird ruhiger
+
+- ✅ **Ein Reiter je Kachel** in der Kurzanleitung (*Einstellungen → Jede Kachel
+  im Einzelnen*): alle 17 Dashboard-Kacheln einzeln erklärt – was sie
+  beantworten, worauf man achten muss, welche Fallstricke es gibt. Links die
+  Liste, rechts der Text; ein kleines Symbol zeigt die Darstellungsart.
+- ✅ **Dafür deutlich weniger Fließtext im Dashboard.** Die langen Absätze
+  unter den Diagrammen lenkten vom Diagramm ab und wiederholten sich bei jedem
+  Besuch. Geblieben sind nur noch berechnete Werte und kurze Hinweise; die
+  Herleitung steht in der Anleitung. Ein Link *„Was zeigen die Kacheln? →“*
+  über dem Raster führt direkt dorthin und klappt den Abschnitt auf.
+
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).
 

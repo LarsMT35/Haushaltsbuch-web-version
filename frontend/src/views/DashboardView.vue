@@ -660,6 +660,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
     <p class="hint" style="margin-top: -0.25rem">
       Zeitraum gilt für Kennzahlen und Kategorien; Verlaufs-Kacheln zeigen immer die letzten
       {{ trendMonths }} Monate. Kacheln per Drag &amp; Drop anordnen, ✕ blendet aus.
+      <router-link :to="{ path: '/einstellungen', query: { hilfe: 'kacheln' } }"
+                   data-tip="Erklärt jede Kachel einzeln: was sie beantwortet und worauf man achten muss."
+                   data-tip-pos="below">Was zeigen die Kacheln? →</router-link>
       <template v-if="period && period.start_day > 1">
         Abrechnungsmonat beginnt am {{ period.start_day }}. – laufender Zeitraum
         <strong>{{ period.current_period }}</strong> ({{ fmtDate(period.current_from) }} –
@@ -710,10 +713,8 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
             <span class="hint" style="font-size: .8rem">{{ modeAccounts.length }} Konten</span>
           </div>
         </div>
-        <p class="hint" style="margin: .4rem 0 0">Vergleich: gleich langer Zeitraum davor, ohne Umbuchungen.</p>
-        <p v-if="kpi.savings && !kpi.income && !kpi.expenses" class="hint" style="margin: .2rem 0 0">
-          Auf dieser Auswahl gab es nur Umbuchungen – Geld, das zwischen deinen eigenen Konten
-          bewegt wurde. Es taucht deshalb als Bewegung und im Vermögen auf, nicht als Einnahme.
+        <p v-if="kpi.savings && !kpi.income && !kpi.expenses" class="hint" style="margin: .4rem 0 0">
+          Nur Umbuchungen in dieser Auswahl –
           <router-link :to="{ path: '/buchungen', query: { account_ids: scopedAccountIds(),
                               date_from: filter.date_from, date_to: filter.date_to,
                               direction: 'transfer' } }">Buchungen ansehen →</router-link>
@@ -748,8 +749,7 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
               backgroundColor: '#2563eb22', fill: true, pointRadius: 0, tension: .2, spanGaps: false },
           ]"
           :options="{ scales: { x: { title: { display: true, text: 'Tag im Monat' } } } }" />
-        <p class="hint" style="margin: .4rem 0 0">Liegt die blaue Linie über der grauen, wird schneller
-          ausgegeben als im Vormonat.</p>
+        <p class="hint" style="margin: .4rem 0 0">Über der grauen Linie = schneller als im Vormonat.</p>
       </div>
 
       <!-- Budget-Fortschritt: die handlungsrelevanteste Ansicht überhaupt (4.8) -->
@@ -1016,22 +1016,15 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
               borderColor: '#9aa7b4', borderDash: [5, 4], borderWidth: 2, pointRadius: 0, tension: .2 },
           ]"
           :options="{ scales: { y: { ticks: { callback: (v) => v + ' %' } } } }" />
-        <p class="hint" style="margin: .4rem 0 0">
-          Balken = Netto-Zufluss auf die Sparkonten, inklusive aller Umbuchungen in beide Richtungen
-          (200 € aufs Tagesgeld, 50 € zurück = 150 € gespart).
-          Die gestrichelte Linie ist das, was rechnerisch übrig blieb – der Abstand dazwischen liegt
-          unverzinst auf dem Girokonto.
-        </p>
+
         <!-- Eine Quote über 100 % ist rechnerisch richtig, aber ohne Erklärung
              sinnlos: gespart wurde dann aus vorhandenem Guthaben, nicht aus dem
              Einkommen des Monats. -->
-        <p v-if="savingsRateOutlier" class="hint" style="margin: .3rem 0 0">
-          <strong>{{ savingsRateOutlier.month }}: {{ savingsRateOutlier.rate }} %</strong> –
-          das sind <strong>{{ fmtAmount(savingsRateOutlier.saved) }}</strong> auf die Sparkonten
-          bei <strong>{{ fmtAmount(savingsRateOutlier.income) }}</strong> Einnahmen in diesem
-          Zeitraum. Mehr als 100 % heißt: das Geld kam nicht aus dem laufenden Einkommen,
-          sondern lag schon da (umgeschichtetes Guthaben) – oder das Gehalt fiel in eine
-          andere Periode. Die Ansicht <em>€</em> zeigt das unverfälscht.
+        <!-- Nur die Zahl, nicht die Herleitung: die steht in der Kurzanleitung. -->
+        <p v-if="savingsRateOutlier" class="hint" style="margin: .4rem 0 0">
+          <strong>{{ savingsRateOutlier.month }}: {{ savingsRateOutlier.rate }} %</strong> =
+          {{ fmtAmount(savingsRateOutlier.saved) }} gespart bei
+          {{ fmtAmount(savingsRateOutlier.income) }} Einnahmen.
         </p>
       </div>
 
