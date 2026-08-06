@@ -57,6 +57,13 @@
     }
   ],
 
+  "ci": {
+    "wo": ".github/workflows/ci.yml – läuft bei Push auf main, bei Pull Requests und manuell (workflow_dispatch)",
+    "jobs": "Backend-Tests (pytest), Frontend-Build (npm ci + vite build), Alembic-Migrationen gegen eine leere SQLite-Datenbank",
+    "versionen_gekoppelt": "Python 3.12 und Node 22 sind bewusst dieselben Versionen wie in backend/Dockerfile bzw. frontend/Dockerfile. Wird eine davon dort angehoben, muss die Workflow-Datei mitgezogen werden – sonst testet die CI etwas anderes als das, was ausgeliefert wird.",
+    "pytest_nicht_in_requirements": "Testabhängigkeiten stehen in backend/requirements-dev.txt (zieht requirements.txt mit ein), damit das Container-Image sie nicht mitschleppt."
+  },
+
   "betriebs_eigenheiten": {
     "nginx_cache": "index.html wird mit no-cache/no-store ausgeliefert, /assets/ dagegen langfristig gecacht (immutable) – absichtlich seit Commit 2a9a6d2, weil Nutzer nach Updates zunächst veraltete Seiten im Browser sah.",
     "ollama_optional": "OLLAMA_URL leer = Funktion komplett unsichtbar in der UI, kein Fallback-Modus. Läuft typischerweise auf einem ANDEREN Rechner als der Container (GPU-PC im LAN), nicht im selben Compose-Stack – Ollama muss dort per OLLAMA_HOST=0.0.0.0 erreichbar gemacht werden (lauscht sonst nur auf 127.0.0.1)."
