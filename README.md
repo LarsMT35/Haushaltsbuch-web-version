@@ -4,6 +4,10 @@ Selbst gehostete Web-App als Ersatz für das Excel-Haushaltsbuch: echte Konten,
 Mehrbenutzerfähigkeit, flexibler Bank-Import, durchgehende Historie ohne
 Jahresschnitt. Grundlage ist das [Anforderungsdokument](docs/Anforderungen.md).
 
+> Vor Arbeiten an Deployment/Betrieb: **[docs/kontext.json](docs/kontext.json)**
+> lesen – Wissen, das sich nicht aus Repo/Code ableiten lässt (Proxmox-CT,
+> Demo-Reset-Pflicht, offene Punkte, Hintergrund zu einzelnen Designentscheidungen).
+
 ## Stack
 
 | Schicht | Technik |

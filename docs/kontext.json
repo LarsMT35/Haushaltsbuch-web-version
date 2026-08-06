@@ -1,0 +1,76 @@
+{
+  "_hinweis": "Wissen über dieses Projekt, das sich NICHT aus Code, Commits oder den übrigen docs/*.md ableiten lässt – Betriebsumgebung, Historie, offene Entscheidungen. Gedacht für zukünftige Bearbeiter (Mensch oder KI), damit dieser Kontext nicht bei jeder neuen Session verloren geht. Bei Änderungen an Deployment/Umgebung bitte hier nachziehen.",
+  "stand": "2026-08-06",
+
+  "deployment": {
+    "produktiv": {
+      "host": "Proxmox-Host, LXC-Container",
+      "ct_id": 169,
+      "pfad": "/opt/haushaltsbuch",
+      "zugriff": "pct enter 169, dann normale Shell im Container",
+      "update_befehl": "cd /opt/haushaltsbuch && git pull && docker compose up -d --build",
+      "migration": "läuft automatisch beim Container-Start (alembic upgrade head im Docker-Entrypoint) – kein manueller Schritt nötig",
+      "port": 8080,
+      "hinweis": "CT-Nummer 169 ist umgebungsspezifisch, taucht in keiner Repo-Datei auf. Proxmox-Installer-Skript würde bei Neuaufsetzung eine ANDERE ID vergeben (nächste freie)."
+    },
+    "demo": {
+      "port": 8181,
+      "login": "test / test",
+      "partner_login": "partner / partner123 (nur Leser auf 'Gemeinsames Konto (Demo)')",
+      "wichtige_einschraenkung": "seed_demo.py läuft NUR gegen eine leere DB und ist danach idempotent (legt nichts nach). Nach jeder Änderung an seed_demo.py MUSS der Demo-Stack zurückgesetzt werden, sonst bleiben alte Demodaten stehen: scripts/demo-down.sh --reset && scripts/demo-up.sh",
+      "produktion_unberuehrt": "eigene DB/Volume/Compose-Projektname, ein Reset des Demo-Stacks betrifft die Produktion nicht"
+    }
+  },
+
+  "repository_historie": {
+    "ursprung": "Repo hieß zunächst 'Test' auf GitHub, wurde vom Nutzer manuell umbenannt/geleert",
+    "aktueller_name": "Haushaltsbuch-web-version",
+    "owner": "LarsMT35 (GitHub-User, Login lowercase: larsmt35)",
+    "origin_url": "https://github.com/larsmt35/haushaltsbuch-web-version",
+    "hinweis": "GitHub liefert bei Push/Fetch eine 'repository moved' Meldung, funktioniert aber – Redirect ist aktiv, kein Handlungsbedarf"
+  },
+
+  "nutzungskontext": {
+    "wer": "Lars (Eigentümer/Admin) + Partner (Leser auf gemeinsamem Konto)",
+    "bank": "Sparkasse (Hauptkonto), reale Buchungen ursprünglich aus einer historisch gepflegten Excel-Whitelist importiert",
+    "gehalt": "kommt real üblicherweise um den 27. des Monats herum – das ist der tatsächliche Auslöser für Feature v1.6 (Abrechnungsmonat/Finanzmonat, Starttag 27). Kein Zufallswert.",
+    "konten_struktur_real": "Giro (privat) + Tagesgeld (privat) + Depot (privat, ohne eigenen Bank-Feed – nur v1.3b-Gegenbuchungen) + gemeinsames Konto mit Partner",
+    "excel_vorgeschichte": "Vor dieser App wurde ein Excel-Haushaltsbuch geführt; für Monatsverschiebung wurden dort Buchungen manuell um einen Monat versetzt kopiert – genau dieses Problem hat v1.6 sauber gelöst (Zuordnung statt Kopie)."
+  },
+
+  "architektur_entscheidungen_mit_langer_begruendung": [
+    {
+      "thema": "is_transfer_like ohne transfer_target_account_id",
+      "warum_nicht_geloescht": "Bewusst als Fallback erhalten (v1.3), auch nachdem v1.3b echte Gegenbuchungen eingeführt hat – deckt den Fall ab, dass jemand eine Kategorie als 'wie Umbuchung' markieren will, ohne dafür extra ein (ggf. nicht existierendes) Zielkonto anzulegen."
+    },
+    {
+      "thema": "financial_month speichert nur die Abweichung, nie den Wert",
+      "warum": "Ändert sich später der Starttag (z.B. 27 -> 25), müssen sich ALLE unveränderten Buchungen automatisch neu einordnen. Nur die von Hand korrigierten Ausnahmen (z.B. Gehalt kam wegen Feiertag früher) sollen stabil bleiben."
+    },
+    {
+      "thema": "Budget-Kontobindung: Schlüssel ist (category_id, account_id), nicht nur category_id",
+      "warum": "Vor dem Fix verdrängten sich zwei Budgets derselben Kategorie auf unterschiedlichen Konten gegenseitig (nur eines überlebte in der Anzeige) – vom Nutzer selbst gemeldeter Bug, siehe Commit 690af2a."
+    },
+    {
+      "thema": "Dashboard-Modus 'Gemeinsam/Persönlich/Gesamt' trennt nach Account.is_household, nicht nach Zahl der Rollen",
+      "warum": "Ursprünglich aus Rollenzahl abgeleitet (>1 Nutzer = gemeinsam) – das kippte fälschlich, sobald der Partner NUR Lesezugriff auf ein eigentlich privates Konto bekam, oder ein Haushaltskonto (noch) keinen zweiten Nutzer hatte."
+    }
+  ],
+
+  "bekannte_luecken_offen_liegen_lassen": {
+    "hinweis": "Explizit im Gespräch mit dem Nutzer identifiziert, aber NICHT umgesetzt (kein Auftrag oder bewusst zurückgestellt) – nicht aus Tests/Code ersichtlich, dass diese fehlen:",
+    "punkte": [
+      "Kein automatischer Bankabruf (FinTS/HBCI) – weiterhin manueller CSV-Import. Größtes noch offenes Komfort-Feature, aber als eigenes Projekt eingeschätzt (TAN-Verfahren, Zugangsdaten-Speicherung).",
+      "Diagramme/Kacheln sind keine Sackgassen mehr im Sinne von Klick-Navigation NICHT umgesetzt – Klick auf ein Kategorie-Segment springt nicht automatisch zur gefilterten Buchungsliste.",
+      "Keine CI/GitHub-Actions-Pipeline – 91 Tests existieren, laufen aber nirgends automatisch bei Push.",
+      "/dashboard/deposits nimmt weiterhin nur ein einzelnes account_id (kein Mehrfachauswahl-Support wie die übrigen Dashboard-Endpunkte).",
+      "Kein Rate-Limiting auf /auth/login (im LAN-Kontext als unkritisch bewertet).",
+      "Keine automatisierten Frontend-Tests (nur Backend-Pytest + manuelle Playwright-Stichproben während der Entwicklung, nicht Teil der Test-Suite)."
+    ]
+  },
+
+  "betriebs_eigenheiten": {
+    "nginx_cache": "index.html wird mit no-cache/no-store ausgeliefert, /assets/ dagegen langfristig gecacht (immutable) – absichtlich seit Commit 2a9a6d2, weil Nutzer nach Updates zunächst veraltete Seiten im Browser sah.",
+    "ollama_optional": "OLLAMA_URL leer = Funktion komplett unsichtbar in der UI, kein Fallback-Modus. Läuft typischerweise auf einem ANDEREN Rechner als der Container (GPU-PC im LAN), nicht im selben Compose-Stack – Ollama muss dort per OLLAMA_HOST=0.0.0.0 erreichbar gemacht werden (lauscht sonst nur auf 127.0.0.1)."
+  }
+}
