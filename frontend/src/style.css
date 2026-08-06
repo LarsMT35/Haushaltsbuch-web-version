@@ -236,6 +236,52 @@ a { color: var(--accent); text-decoration: none; }
 .tile-resize:hover { opacity: 1 !important; }
 .tile.resizing { user-select: none; outline: 2px dashed var(--accent); outline-offset: -2px; }
 
+/* Erklärung beim Überfahren (data-tip="…").
+   Der eingebaute title-Tooltip des Browsers erscheint erst nach gut einer
+   Sekunde, verschwindet nach wenigen weiter von selbst und lässt sich nicht
+   gestalten – für Sätze, die eine Funktion erklären sollen, ist er unbrauchbar.
+   Dieser hier erscheint zügig und bleibt, solange die Maus auf dem Element ist.
+   Kein JavaScript nötig, also auch keine hängenden Tooltips nach Neuzeichnen. */
+[data-tip] { position: relative; }
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 9px); left: 50%; transform: translateX(-50%);
+  width: max-content; max-width: 290px;
+  background: var(--text); color: var(--surface);
+  padding: .45rem .6rem; border-radius: 7px;
+  font-size: .78rem; font-weight: 400; line-height: 1.45; text-align: left;
+  white-space: normal; letter-spacing: normal; text-transform: none;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 28%);
+  opacity: 0; visibility: hidden; pointer-events: none; z-index: 60;
+  transition: opacity .12s ease .3s, visibility 0s linear .42s;
+}
+[data-tip]::before {           /* Spitze zum Element hin */
+  content: ''; position: absolute; bottom: calc(100% + 3px); left: 50%;
+  margin-left: -6px; border: 6px solid transparent; border-top-color: var(--text);
+  opacity: 0; visibility: hidden; pointer-events: none; z-index: 60;
+  transition: opacity .12s ease .3s, visibility 0s linear .42s;
+}
+[data-tip]:hover::after, [data-tip]:hover::before,
+[data-tip]:focus-visible::after, [data-tip]:focus-visible::before {
+  opacity: 1; visibility: visible;
+  transition: opacity .12s ease .3s, visibility 0s linear .3s;
+}
+/* Am rechten Rand (Kachel-Regler) würde ein mittig zentrierter Kasten aus der
+   Kachel herauslaufen – dort rechtsbündig ausrichten. */
+[data-tip][data-tip-pos='left']::after { left: auto; right: 0; transform: none; }
+[data-tip][data-tip-pos='left']::before { left: auto; right: 10px; margin-left: 0; }
+/* Erste Zeile der Seite: nach unten aufklappen, sonst liegt der Kasten außerhalb */
+[data-tip][data-tip-pos='below']::after {
+  bottom: auto; top: calc(100% + 9px);
+}
+[data-tip][data-tip-pos='below']::before {
+  bottom: auto; top: calc(100% + 3px);
+  border-top-color: transparent; border-bottom-color: var(--text);
+}
+@media (hover: none) {         /* Touch: kein Hover, also kein hängender Kasten */
+  [data-tip]::after, [data-tip]::before { display: none; }
+}
+
 /* Einstellungen je Kachel (Einheit, Anzahl) – klein und rechts in der
    Überschrift, damit sie die Auswertung nicht überlagern. Gedämpft, bis man
    die Kachel überfährt; per Tastatur bleiben sie jederzeit erreichbar. */

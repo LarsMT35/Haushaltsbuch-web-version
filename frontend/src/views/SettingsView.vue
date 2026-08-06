@@ -169,7 +169,7 @@ async function changePassword() {
           <div><label>IBAN</label><input v-model="accountForm.iban" placeholder="für Auto-Erkennung & Umbuchungen" /></div>
           <div><label>Anfangssaldo *</label><input type="number" step="0.01" v-model="accountForm.opening_balance" /></div>
           <div><label>Saldo-Stichtag</label><input type="date" v-model="accountForm.opening_balance_date" /></div>
-          <div><label title="Zählt im Dashboard zum Bereich „Gemeinsam“ statt „Persönlich“">Haushaltskonto</label>
+          <div><label data-tip="Zählt im Dashboard zum Bereich „Gemeinsam“ statt „Persönlich“ – unabhängig davon, wer Zugriff hat.">Haushaltskonto</label>
             <input type="checkbox" v-model="accountForm.is_household" /></div>
           <button class="primary" :disabled="!accountForm.name" @click="createAccount">Anlegen</button>
         </div>
@@ -186,9 +186,15 @@ async function changePassword() {
               <td class="hint">{{ a.iban }}</td>
               <td>{{ a.my_role }}</td>
               <td style="text-align: right; white-space: nowrap">
-                <button v-if="a.my_role === 'owner'" @click="toggleHousehold(a)">
+                <button v-if="a.my_role === 'owner'" @click="toggleHousehold(a)"
+                        :data-tip="a.is_household
+                          ? 'Markierung entfernen: das Konto zählt danach wieder zum Bereich „Persönlich“. Budgets und Kachel-Layouts dieses Bereichs gelten dann für dieses Konto.'
+                          : 'Als Haushaltskonto markieren: das Konto erscheint danach im Bereich „Gemeinsam“ statt „Persönlich“ – unabhängig davon, wer Zugriff hat.'"
+                        data-tip-pos="left">
                   {{ a.is_household ? 'Haushalt ✕' : 'als Haushaltskonto' }}</button>
-                <button v-if="a.my_role === 'owner'" @click="archive(a)">Archivieren</button>
+                <button v-if="a.my_role === 'owner'" @click="archive(a)"
+                        data-tip="Konto ausblenden, ohne etwas zu löschen: alle Buchungen und die Historie bleiben erhalten, das Konto taucht nur nicht mehr in Auswahl und Auswertung auf."
+                        data-tip-pos="left">Archivieren</button>
               </td>
             </tr>
           </tbody>

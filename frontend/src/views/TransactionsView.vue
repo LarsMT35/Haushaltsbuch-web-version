@@ -265,12 +265,16 @@ function doExport() {
       <h1>Buchungen</h1>
       <div class="spacer"></div>
       <button @click="showManual = !showManual">+ Manuelle Buchung</button>
-      <button @click="detectTransfers" title="Sucht Umbuchungspaare mit IBAN-Beleg automatisch und legt Gegenbuchungen für Kategorien mit Umbuchungs-Zielkonto an (z.B. Depot, 4.4)">Umbuchungen erkennen</button>
+      <button @click="detectTransfers"
+              data-tip="Sucht Paare, die zusammengehören: gleicher Betrag, gegenläufig, wenige Tage auseinander. Verknüpft eindeutige Fälle automatisch und legt fehlende Gegenbuchungen für Depot & Co. an. Erkannte Paare zählen danach nicht mehr als Einnahme oder Ausgabe."
+              data-tip-pos="below">Umbuchungen erkennen</button>
       <!-- nur wenn eine lokale Ollama-Instanz eingerichtet ist -->
       <button v-if="aiStatus?.enabled" :disabled="aiBusy || !aiStatus.reachable"
-              :title="aiStatus.reachable ? `Fragt ${aiStatus.model} auf ${aiStatus.url} nach Kategorien für nicht zugeordnete Buchungen` : aiStatus.detail"
+              :data-tip="aiStatus.reachable ? `Fragt ${aiStatus.model} auf ${aiStatus.url} nach Kategorien für noch nicht zugeordnete Buchungen. Die KI ordnet nie selbst zu – jeder Vorschlag wird einzeln bestätigt.` : aiStatus.detail" data-tip-pos="below"
               @click="askAi">{{ aiBusy ? 'KI denkt …' : '🤖 KI-Vorschläge' }}</button>
-      <button @click="doExport">Export CSV</button>
+      <button @click="doExport"
+              data-tip="Exportiert genau die aktuell gefilterten Buchungen als CSV-Datei – mit Konto, Kategorie und Notiz. Deine Daten kommen jederzeit wieder heraus."
+              data-tip-pos="below">Export CSV</button>
     </div>
 
     <div v-if="showManual" class="tile" style="margin-bottom: 1rem">
@@ -298,7 +302,9 @@ function doExport() {
     <p v-if="scopeIds.length" class="hint" style="margin: 0 0 .5rem">
       Bereich aus dem Dashboard:
       <strong>{{ scopeNames.join(', ') || `${scopeIds.length} Konten` }}</strong>
-      <button class="btn" style="margin-left: .5rem" @click="clearScope">Bereich aufheben ✕</button>
+      <button class="btn" style="margin-left: .5rem" @click="clearScope"
+              data-tip="Die Kontoauswahl aufheben, die aus dem Dashboard mitgekommen ist. Danach zeigt die Liste alle Konten – die Summe passt dann nicht mehr zur angeklickten Zahl."
+              data-tip-pos="below">Bereich aufheben ✕</button>
     </p>
 
     <div class="chips">
@@ -310,7 +316,9 @@ function doExport() {
         <option value="">Alle Kategorien</option>
         <option v-for="c in categories" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
       </select>
-      <select v-model="filter.direction" title="Einnahmen, Ausgaben oder Umbuchungen">
+      <select v-model="filter.direction"
+              data-tip="Umbuchungen sind Geld zwischen deinen eigenen Konten. Sie zählen weder als Einnahme noch als Ausgabe – sonst wäre jeder Sparbetrag doppelt in der Statistik."
+              data-tip-pos="below">
         <option value="">Ein- und Ausgaben</option>
         <option value="income">Nur Einnahmen</option>
         <option value="expense">Nur Ausgaben</option>
@@ -329,10 +337,12 @@ function doExport() {
     <!-- Zeitraum-Schnellwahl: dieselben Grenzen wie auf der Startseite, damit
          Kachel und Liste denselben Ausschnitt meinen -->
     <div class="chips segmented" style="margin-bottom: .75rem">
-      <button type="button" @click="thisPeriod" :disabled="!period">Laufender Zeitraum</button>
-      <button type="button" @click="lastPeriod" :disabled="!period">Letzter Zeitraum</button>
-      <button type="button" @click="thisYear">Dieses Jahr</button>
-      <button type="button" @click="clearRange">Zeitraum aufheben</button>
+      <button type="button" @click="thisPeriod" :disabled="!period"
+              :data-tip="period ? `Der laufende Abrechnungsmonat (${fmtDate(period.current_from)} – ${fmtDate(period.current_to)}).` : ''">Laufender Zeitraum</button>
+      <button type="button" @click="lastPeriod" :disabled="!period"
+              data-tip="Der letzte abgeschlossene Abrechnungsmonat – derselbe Ausschnitt, den die Startseite standardmäßig zeigt.">Letzter Zeitraum</button>
+      <button type="button" @click="thisYear" data-tip="1. Januar bis 31. Dezember des laufenden Jahres.">Dieses Jahr</button>
+      <button type="button" @click="clearRange" data-tip="Datumsfilter entfernen und wieder alle Buchungen zeigen.">Zeitraum aufheben</button>
       <span v-if="period && period.start_day > 1" class="hint" style="align-self: center">
         Abrechnungsmonat ab dem {{ period.start_day }}.
       </span>
@@ -372,7 +382,8 @@ function doExport() {
         {{ fmtDate(s.transaction_a.booking_date) }}: {{ fmtAmount(s.transaction_a.amount) }}
         ({{ accounts.find((a) => a.id === s.transaction_a.account_id)?.name }})
         ↔ {{ accounts.find((a) => a.id === s.transaction_b.account_id)?.name }}
-        <button style="margin-left: .5rem" @click="linkPair(s)">Als Umbuchung verknüpfen</button>
+        <button style="margin-left: .5rem" @click="linkPair(s)"
+                data-tip="Bestätigt, dass diese beiden Buchungen dasselbe Geld sind. Danach zählen sie nicht mehr als Einnahme und Ausgabe, sondern nur noch als Bewegung zwischen deinen Konten.">Als Umbuchung verknüpfen</button>
       </div>
     </div>
 
@@ -403,14 +414,17 @@ function doExport() {
                 <option value="">– keine –</option>
                 <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
               </select>
-              <button v-if="t.category_id" title="Regel: künftig immer so" @click="makeRule(t)">↻ Regel</button>
+              <button v-if="t.category_id" @click="makeRule(t)"
+                      data-tip="Aus dieser Zuordnung eine dauerhafte Regel machen: künftig landen Buchungen desselben Empfängers automatisch in dieser Kategorie. Wirkt auf Wunsch auch rückwirkend.">↻ Regel</button>
             </template>
             <span v-else class="hint">aufgeteilt</span>
           </td>
           <td class="num" :class="t.transfer_id ? '' : t.amount < 0 ? 'neg' : 'pos'">{{ fmtAmount(t.amount) }}</td>
           <td style="white-space: nowrap">
-            <button @click="toggleDetail(t)" title="Split & Tags">{{ openDetail === t.id ? '▴' : '▾' }}</button>
-            <button v-if="t.transfer_id" class="hint" @click="unlink(t)" title="Umbuchung auflösen">✕</button>
+            <button @click="toggleDetail(t)"
+                    data-tip="Details öffnen: Buchung auf mehrere Kategorien aufteilen (Split), Tags vergeben und den Abrechnungsmonat abweichend zuordnen.">{{ openDetail === t.id ? '▴' : '▾' }}</button>
+            <button v-if="t.transfer_id" class="hint" @click="unlink(t)"
+                    data-tip="Verknüpfung als Umbuchung aufheben. Beide Buchungen zählen danach wieder als normale Einnahme bzw. Ausgabe." data-tip-pos="left">✕</button>
           </td>
         </tr>
         <!-- v1.1: Splitbuchung & Tags (4.4) -->
@@ -434,11 +448,11 @@ function doExport() {
             <div class="form-row" style="margin-bottom: .25rem">
               <strong>Abrechnungsmonat:</strong>
               <select :value="t.financial_month" @change="setFinancialMonth(t, $event.target.value)"
-                      title="In welchem Monat diese Buchung in den Diagrammen zählt">
+                      data-tip="Nur für die Auswertung: in welchem Abrechnungsmonat diese Buchung in Diagrammen und Budgets zählt. Buchungsdatum, Betrag und Kontostand bleiben unverändert.">
                 <option v-for="m in monthOptions(t)" :key="m" :value="m">{{ m }}</option>
               </select>
               <button v-if="t.financial_month_is_override" @click="setFinancialMonth(t, null)"
-                      title="Wieder automatisch aus dem Buchungsdatum ableiten">Automatisch</button>
+                      data-tip="Die manuelle Zuordnung entfernen – der Monat ergibt sich dann wieder aus dem Buchungsdatum und dem eingestellten Starttag.">Automatisch</button>
               <span class="hint">{{ t.financial_month_is_override
                 ? 'Von Hand zugeordnet – Buchungsdatum und Saldo bleiben unverändert.'
                 : 'Folgt automatisch dem Buchungsdatum.' }}</span>

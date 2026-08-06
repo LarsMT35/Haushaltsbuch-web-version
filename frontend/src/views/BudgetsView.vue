@@ -114,9 +114,12 @@ const ampelColor = { gruen: 'var(--ampel-gruen)', gelb: 'var(--ampel-gelb)', rot
       <h1>Budgets</h1>
       <div class="spacer"></div>
       <div class="chips segmented">
-        <button type="button" @click="shiftMonth(-1)" title="vorheriger Abrechnungsmonat">‹</button>
-        <button type="button" @click="currentPeriod" :disabled="!period">Laufender Zeitraum</button>
-        <button type="button" @click="shiftMonth(1)" title="nächster Abrechnungsmonat">›</button>
+        <button type="button" @click="shiftMonth(-1)"
+                data-tip="Einen Abrechnungsmonat zurück. Jede Periode hat ihren eigenen Verbrauch – Budgets beginnen dort wieder bei 0." data-tip-pos="below">‹</button>
+        <button type="button" @click="currentPeriod" :disabled="!period"
+                data-tip="Zurück zum laufenden Abrechnungsmonat." data-tip-pos="below">Laufender Zeitraum</button>
+        <button type="button" @click="shiftMonth(1)"
+                data-tip="Einen Abrechnungsmonat vor – auch in die Zukunft, um zu sehen, welche Budgets dann gelten." data-tip-pos="below">›</button>
       </div>
       <input type="month" v-model="month" />
     </div>
@@ -192,8 +195,12 @@ const ampelColor = { gruen: 'var(--ampel-gruen)', gelb: 'var(--ampel-gelb)', rot
               <td class="num">{{ fmtAmount(b.amount) }}</td>
               <td>{{ fmtDate(b.valid_from) }}</td>
               <td style="text-align: right">
-                <button @click="startEdit(b)">Bearbeiten</button>
-                <button style="margin-left: .3rem" @click="remove(b)">Löschen</button>
+                <button @click="startEdit(b)"
+                        data-tip="Diesen Eintrag korrigieren (Betrag, Konto, Kategorie, Gültig ab). Für eine Änderung, die erst ab einem Datum gelten soll, lieber einen neuen Eintrag anlegen – dann bleibt die Vergangenheit unverändert."
+                        data-tip-pos="left">Bearbeiten</button>
+                <button style="margin-left: .3rem" @click="remove(b)"
+                        data-tip="Eintrag endgültig entfernen – auch rückwirkend. Wenn das Budget nur künftig anders sein soll, stattdessen einen neuen Eintrag mit späterem „Gültig ab“ anlegen."
+                        data-tip-pos="left">Löschen</button>
               </td>
             </tr>
             <tr v-else>

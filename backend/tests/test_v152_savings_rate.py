@@ -127,3 +127,76 @@ def test_savings_between_two_savings_accounts_is_not_new_saving(client, auth_hea
         "account_ids": [tg["id"], depot["id"]]}).json()
     i = sr["months"].index("2026-10")
     assert sr["saved"][i] == 0.0
+
+
+# --------------------------------------------------- v1.7.5: Bereinigungen
+
+def _acc(client, h, name, typ="giro", **kw):
+    return client.post("/api/v1/accounts", headers=h,
+                       json={"name": name, "type": typ, **kw}).json()
+
+
+def _tx(client, h, acc, d, amount, counterparty="Test"):
+    return client.post("/api/v1/transactions", headers=h, json={
+        "account_id": acc["id"], "booking_date": d, "amount": amount,
+        "counterparty": counterparty, "purpose": counterparty}).json()
+
+
+def test_savings_inflow_is_not_also_income(client, auth_headers):
+    """Ein Zugang aufs Sparkonto ist das Gesparte - er darf nicht zusaetzlich
+    die Bezugsgroesse aufblaehen. Sonst waere derselbe Euro Zaehler UND Teil
+    des Nenners, und ein nicht verknuepfter Uebertrag triebe die Quote
+    kuenstlich Richtung 100 %."""
+    h = auth_headers
+    giro = _acc(client, h, "V175-Giro", opening_balance="0", opening_balance_date="2026-01-01")
+    tages = _acc(client, h, "V175-Tagesgeld", typ="tagesgeld",
+                 opening_balance="0", opening_balance_date="2026-01-01")
+    _tx(client, h, giro, "2026-04-01", "2000.00", "Gehalt")
+    _tx(client, h, tages, "2026-04-15", "500.00", "Uebertrag ohne Gegenbuchung")
+
+    r = client.get("/api/v1/dashboard/savings-rate", headers=h, params={
+        "date_from": "2026-04-01", "date_to": "2026-04-30",
+        "account_ids": [giro["id"], tages["id"]]}).json()
+    i = r["months"].index("2026-04")
+    assert r["income"][i] == 2000.0        # nur das Gehalt, nicht 2500
+    assert r["saved"][i] == 500.0
+    assert r["rate"][i] == 25.0            # 500 von 2000, nicht 20 % von 2500
+
+
+def test_rate_is_null_without_income(client, auth_headers):
+    """Ohne Einnahmen gibt es keine Quote. Frueher stand hier 0 % - das las
+    sich wie 'nichts gespart', obwohl die Bezugsgroesse fehlt."""
+    h = auth_headers
+    tages = _acc(client, h, "V175-Nur-Sparen", typ="tagesgeld",
+                 opening_balance="0", opening_balance_date="2026-01-01")
+    _tx(client, h, tages, "2026-06-10", "300.00", "Uebertrag")
+
+    r = client.get("/api/v1/dashboard/savings-rate", headers=h, params={
+        "date_from": "2026-06-01", "date_to": "2026-06-30",
+        "account_ids": [tages["id"]]}).json()
+    i = r["months"].index("2026-06")
+    assert r["income"][i] == 0.0
+    assert r["saved"][i] == 300.0
+    assert r["rate"][i] is None            # keine Quote, nicht 0 %
+    assert r["surplus_rate"][i] is None
+
+
+def test_net_savings_logic_unchanged(client, auth_headers):
+    """Die Netto-Rechnung aus v1.5.2 muss unangetastet bleiben:
+    200 aufs Tagesgeld, 50 zurueck = 150 gespart."""
+    h = auth_headers
+    giro = _acc(client, h, "V175-Netto-Giro", opening_balance="0",
+                opening_balance_date="2026-01-01")
+    tages = _acc(client, h, "V175-Netto-Tagesgeld", typ="tagesgeld",
+                 opening_balance="0", opening_balance_date="2026-01-01")
+    _tx(client, h, giro, "2026-05-01", "1000.00", "Gehalt")
+    _tx(client, h, tages, "2026-05-05", "200.00", "hin")
+    _tx(client, h, tages, "2026-05-20", "-50.00", "zurueck")
+
+    r = client.get("/api/v1/dashboard/savings-rate", headers=h, params={
+        "date_from": "2026-05-01", "date_to": "2026-05-31",
+        "account_ids": [giro["id"], tages["id"]]}).json()
+    i = r["months"].index("2026-05")
+    assert r["saved"][i] == 150.0
+    assert r["income"][i] == 1000.0
+    assert r["rate"][i] == 15.0

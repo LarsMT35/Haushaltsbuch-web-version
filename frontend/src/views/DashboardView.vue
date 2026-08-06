@@ -110,6 +110,11 @@ const MODES = [
   ['persoenlich', '👤 Persönlich'],
   ['gesamt', 'Σ Gesamt'],
 ]
+const MODE_TIPS = {
+  gemeinsam: 'Nur Konten, die als Haushaltskonto markiert sind. Beantwortet: was kostet der gemeinsame Haushalt?',
+  persoenlich: 'Nur deine eigenen Konten. Beantwortet: was gebe ich privat aus und was bleibt mir?',
+  gesamt: 'Alle Konten zusammen. Nützlich fürs Gesamtvermögen, vermischt aber Haushalt und Privates.',
+}
 const mode = ref(localStorage.getItem('dashboard_mode') || 'gemeinsam')
 
 const householdAccounts = computed(() => accounts.value.filter((a) => a.is_household))
@@ -581,7 +586,8 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
     <!-- Bereichs-Umschalter: nur sichtbar, wenn es überhaupt etwas zu trennen gibt -->
     <div v-if="availableModes.length > 1" class="chips segmented">
       <button v-for="[key, label] in availableModes" :key="key"
-              type="button" :class="{ active: mode === key }" @click="switchMode(key)">{{ label }}</button>
+              type="button" :class="{ active: mode === key }" @click="switchMode(key)"
+              :data-tip="MODE_TIPS[key]" data-tip-pos="below">{{ label }}</button>
       <span class="hint" style="align-self: center">
         {{ mode === 'gemeinsam' ? 'Nur Haushaltskonten' :
            mode === 'persoenlich' ? 'Nur eigene Konten' : 'Alle Konten zusammen' }}
@@ -619,17 +625,25 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       <input type="date" v-model="filter.date_to" @input="onManualDate" />
       <span v-if="hiddenTiles.length" class="hint" style="align-self: center">
         Ausgeblendet:
-        <button v-for="t in hiddenTiles" :key="t.id" @click="show(t.id)" style="margin-left: .25rem">
+        <button v-for="t in hiddenTiles" :key="t.id" @click="show(t.id)" style="margin-left: .25rem"
+                :data-tip="`Kachel „${t.label}“ wieder einblenden. Die Daten dazu werden erst jetzt geladen – ausgeblendete Kacheln kosten keine Abfragen.`"
+                data-tip-pos="below">
           + {{ t.label }}</button>
       </span>
     </div>
     <!-- Zeitraum-Quicklinks (4.9) -->
     <div class="chips">
-      <button type="button" :class="{ active: activePreset === 'this_month' }" @click="applyPreset('this_month')">{{ period && period.start_day > 1 ? 'Laufender Zeitraum' : 'Dieser Monat' }}</button>
-      <button type="button" :class="{ active: activePreset === 'last_month' }" @click="applyPreset('last_month')">{{ period && period.start_day > 1 ? 'Letzter Zeitraum' : 'Letzter Monat' }}</button>
+      <button type="button" :class="{ active: activePreset === 'this_month' }" @click="applyPreset('this_month')"
+              :data-tip="period && period.start_day > 1 ? `Der laufende Abrechnungsmonat (${fmtDate(period.current_from)} – ${fmtDate(period.current_to)}). Noch nicht abgeschlossen – die Zahlen wachsen bis zum Ende.` : 'Der laufende Kalendermonat. Noch nicht abgeschlossen – die Zahlen wachsen bis zum Monatsende.'"
+              data-tip-pos="below">{{ period && period.start_day > 1 ? 'Laufender Zeitraum' : 'Dieser Monat' }}</button>
+      <button type="button" :class="{ active: activePreset === 'last_month' }" @click="applyPreset('last_month')"
+              data-tip="Der letzte vollständig abgeschlossene Zeitraum – die aussagekräftigste Grundeinstellung, weil hier nichts mehr dazukommt."
+              data-tip-pos="below">{{ period && period.start_day > 1 ? 'Letzter Zeitraum' : 'Letzter Monat' }}</button>
       <button type="button" :class="{ active: activePreset === 'this_year' }" @click="applyPreset('this_year')">Dieses Jahr</button>
       <button type="button" :class="{ active: activePreset === 'last_year' }" @click="applyPreset('last_year')">Letztes Jahr</button>
-      <button type="button" :class="{ active: activePreset === 'last_12_months' }" @click="applyPreset('last_12_months')">Letzte 12 Monate</button>
+      <button type="button" :class="{ active: activePreset === 'last_12_months' }" @click="applyPreset('last_12_months')"
+              data-tip="Rollierendes Jahr bis heute – glättet einzelne Ausreißer und zeigt eher das übliche Niveau als ein einzelner Monat."
+              data-tip-pos="below">Letzte 12 Monate</button>
       <select :value="activePreset && activePreset.startsWith('year_') ? activePreset.slice(5) : ''"
               @change="applyYear($event.target.value)" title="Ganzes Kalenderjahr auswählen">
         <option value="">Jahr wählen…</option>
@@ -639,7 +653,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
     <div class="chips segmented" style="margin: -0.25rem 0 .5rem">
       <span class="hint" style="align-self: center; margin-right: .3rem">Verlauf:</span>
       <button v-for="n in TREND_CHOICES" :key="n" type="button"
-              :class="{ active: trendMonths === n }" @click="setTrendMonths(n)">{{ n }} Monate</button>
+              :class="{ active: trendMonths === n }" @click="setTrendMonths(n)"
+              :data-tip="`Verlaufs-Kacheln zeigen die letzten ${n} Monate. Gilt für alle gemeinsam – zwei Verläufe nebeneinander, die unterschiedlich weit zurückreichen, laden zum Fehlschluss ein.`"
+              data-tip-pos="below">{{ n }} Monate</button>
     </div>
     <p class="hint" style="margin-top: -0.25rem">
       Zeitraum gilt für Kennzahlen und Kategorien; Verlaufs-Kacheln zeigen immer die letzten
@@ -655,8 +671,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       <!-- Kennzahlen gebündelt statt vier einzelner Kacheln, jeweils mit
            Veränderung gegenüber dem Vergleichszeitraum davor -->
       <div v-if="isVisible('kpis')" class="tile wide" v-bind="tileProps('kpis')">
-        <button class="tile-close" @click="hide('kpis')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('kpis')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'kpis')"
                 @dblclick="resetSize('kpis')"></button>
         <h3>Kennzahlen <span class="hint">{{ summary.date_from }} – {{ summary.date_to }}</span></h3>
@@ -705,7 +722,8 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <!-- Handlungsbedarf wird nicht versteckt (4.9.1) -->
       <div v-if="isVisible('unassigned') && summary.unassigned_count > 0" class="tile warn" v-bind="tileProps('unassigned')">
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'unassigned')"
                 @dblclick="resetSize('unassigned')"></button>
         <h3>⚠ Handlungsbedarf</h3>
@@ -715,8 +733,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <!-- Kumulierter Monatsverlauf: gegensteuern, solange der Monat läuft -->
       <div v-if="isVisible('cumulative') && cumulative" class="tile wide" v-bind="tileProps('cumulative')">
-        <button class="tile-close" @click="hide('cumulative')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('cumulative')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'cumulative')"
                 @dblclick="resetSize('cumulative')"></button>
         <h3>Ausgaben kumuliert – {{ cumulative.month }} gegen {{ cumulative.previous_month }}
@@ -735,8 +754,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <!-- Budget-Fortschritt: die handlungsrelevanteste Ansicht überhaupt (4.8) -->
       <div v-if="isVisible('budget_progress') && budgetStatus" class="tile wide" v-bind="tileProps('budget_progress')">
-        <button class="tile-close" @click="hide('budget_progress')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('budget_progress')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'budget_progress')"
                 @dblclick="resetSize('budget_progress')"></button>
         <!-- Zeitraum ausschreiben: "2026-08" allein sagt bei verschobenem
@@ -772,8 +792,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <!-- Fixkosten-Sockel: wie viel vom Einkommen ist frei verfügbar? -->
       <div v-if="isVisible('fixed_base') && fixedBase" class="tile wide" v-bind="tileProps('fixed_base')">
-        <button class="tile-close" @click="hide('fixed_base')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('fixed_base')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'fixed_base')"
                 @dblclick="resetSize('fixed_base')"></button>
         <h3>Fixkosten-Sockel</h3>
@@ -796,8 +817,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <!-- Fälligkeiten: Liquiditätsblick nach vorn statt nur zurück (4.7 b) -->
       <div v-if="isVisible('upcoming')" class="tile" v-bind="tileProps('upcoming')">
-        <button class="tile-close" @click="hide('upcoming')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('upcoming')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'upcoming')"
                 @dblclick="resetSize('upcoming')"></button>
         <h3>Fällig in den nächsten 30 Tagen</h3>
@@ -820,8 +842,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <!-- Kategorie-Trend: WAS ist teurer geworden (Jahresvergleich ist zu grob) -->
       <div v-if="isVisible('category_trend') && categoryTrend" class="tile wide" v-bind="tileProps('category_trend')">
-        <button class="tile-close" @click="hide('category_trend')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('category_trend')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'category_trend')"
                 @dblclick="resetSize('category_trend')"></button>
         <h3>Kategorie-Trend
@@ -830,6 +853,8 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
           <span class="tile-opts">
             <button v-for="n in [3, 5, 8]" :key="n" type="button"
                     :class="{ active: tileOpt('category_trend','lines') === n }"
+                    :data-tip="`Die ${n} größten Ausgabenkategorien als Linien. Mehr Linien zeigen mehr, werden aber schnell unübersichtlich.`"
+                    data-tip-pos="left"
                     @click="setTileOpt('category_trend','lines', n, true)">{{ n }} Linien</button>
           </span>
         </h3>
@@ -842,8 +867,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <!-- Top-Empfänger: wohin das Geld jenseits der Kategorie fließt -->
       <div v-if="isVisible('top_counterparties') && topCounterparties" class="tile" v-bind="tileProps('top_counterparties')">
-        <button class="tile-close" @click="hide('top_counterparties')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('top_counterparties')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'top_counterparties')"
                 @dblclick="resetSize('top_counterparties')"></button>
         <h3>Top-Empfänger im Zeitraum</h3>
@@ -861,8 +887,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       </div>
 
       <div v-if="isVisible('cashflow') && cashflow" class="tile wide" v-bind="tileProps('cashflow')">
-        <button class="tile-close" @click="hide('cashflow')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('cashflow')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'cashflow')"
                 @dblclick="resetSize('cashflow')"></button>
         <h3>Einnahmen / Ausgaben im Verlauf
@@ -877,14 +904,17 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       </div>
 
       <div v-if="isVisible('by_category')" class="tile wide" v-bind="tileProps('by_category')">
-        <button class="tile-close" @click="hide('by_category')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('by_category')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'by_category')"
                 @dblclick="resetSize('by_category')"></button>
         <h3>Ausgaben nach Kategorie <span class="hint">Klick öffnet die Buchungen</span>
           <span class="tile-opts">
             <button v-for="n in [5, 10, 20, 0]" :key="n" type="button"
                     :class="{ active: tileOpt('by_category','top') === n }"
+                    :data-tip="n === 0 ? 'Alle Kategorien mit Ausgaben im Zeitraum zeigen – bei vielen Kategorien wird die Kachel entsprechend hoch.' : `Nur die ${n} größten Ausgabenkategorien zeigen. Der Rest bleibt in den Kennzahlen enthalten, nur nicht in diesem Balkendiagramm.`"
+                    data-tip-pos="left"
                     @click="setTileOpt('by_category','top', n)">{{ n === 0 ? 'alle' : `Top ${n}` }}</button>
           </span>
         </h3>
@@ -896,8 +926,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       </div>
 
       <div v-if="isVisible('fixed')" class="tile" v-bind="tileProps('fixed')">
-        <button class="tile-close" @click="hide('fixed')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('fixed')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'fixed')"
                 @dblclick="resetSize('fixed')"></button>
         <h3>Ausgaben: fix vs. variabel</h3>
@@ -916,8 +947,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       </div>
 
       <div v-if="isVisible('savings') && trend" class="tile wide" v-bind="tileProps('savings')">
-        <button class="tile-close" @click="hide('savings')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('savings')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'savings')"
                 @dblclick="resetSize('savings')"></button>
         <h3>Monatliche Bewegung der Sparkonten
@@ -929,8 +961,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       </div>
 
       <div v-if="isVisible('networth') && networth" class="tile wide" v-bind="tileProps('networth')">
-        <button class="tile-close" @click="hide('networth')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('networth')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'networth')"
                 @dblclick="resetSize('networth')"></button>
         <h3>Vermögensverlauf (Monatsende) <span class="hint">letzte {{ trendMonths }} Monate</span></h3>
@@ -944,15 +977,20 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       </div>
 
       <div v-if="isVisible('savings_rate') && savingsRate" class="tile wide" v-bind="tileProps('savings_rate')">
-        <button class="tile-close" @click="hide('savings_rate')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('savings_rate')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'savings_rate')"
                 @dblclick="resetSize('savings_rate')"></button>
         <h3>Sparquote <span class="hint">letzte {{ trendMonths }} Monate</span>
           <span class="tile-opts">
             <button type="button" :class="{ active: tileOpt('savings_rate','unit') === 'eur' }"
+                    data-tip="In Euro: wie viel tatsächlich auf die Sparkonten ging, dazu Sparpotenzial und Einnahmen. Unmittelbar ablesbar, weil kein Bezugswert im Kopf nötig ist."
+                    data-tip-pos="left"
                     @click="setTileOpt('savings_rate','unit','eur')">€</button>
             <button type="button" :class="{ active: tileOpt('savings_rate','unit') === 'pct' }"
+                    data-tip="In Prozent der Einnahmen. Gut zum Vergleichen von Monaten mit unterschiedlichem Einkommen – ohne Einnahmen bleibt der Monat leer, weil es dann keine Quote gibt."
+                    data-tip-pos="left"
                     @click="setTileOpt('savings_rate','unit','pct')">%</button>
           </span>
         </h3>
@@ -998,8 +1036,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       </div>
 
       <div v-if="isVisible('year_comparison') && yearComp" class="tile wide" v-bind="tileProps('year_comparison')">
-        <button class="tile-close" @click="hide('year_comparison')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('year_comparison')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'year_comparison')"
                 @dblclick="resetSize('year_comparison')"></button>
         <h3>Jahresvergleich – Ausgaben pro Kategorie</h3>
@@ -1018,8 +1057,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <!-- v1.2: Ampel-Übersicht wiederkehrende Kostenpositionen (4.7 b, 4.9) -->
       <div v-if="isVisible('recurring_ampel') && recurringStatus" class="tile wide" v-bind="tileProps('recurring_ampel')">
-        <button class="tile-close" @click="hide('recurring_ampel')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('recurring_ampel')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'recurring_ampel')"
                 @dblclick="resetSize('recurring_ampel')"></button>
         <h3>Wiederkehrende Kosten – Soll/Ist</h3>
@@ -1042,8 +1082,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <!-- v1.2: Einzahlungstransparenz gemeinsames Konto (4.9) -->
       <div v-if="isVisible('deposits')" class="tile wide" v-bind="tileProps('deposits')">
-        <button class="tile-close" @click="hide('deposits')">✕</button>
-        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('deposits')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
                 @pointerdown="startResize($event, 'deposits')"
                 @dblclick="resetSize('deposits')"></button>
         <h3>Einzahlungen pro Person (gemeinsames Konto)

@@ -519,12 +519,15 @@ class SavingsRateOut(BaseModel):
     """
 
     months: list[str]
+    # Einnahmen OHNE Zugänge auf Sparkonten: die sind hier das Gesparte und
+    # dürfen nicht zugleich die Bezugsgröße aufblähen.
     income: list[float]
     expenses: list[float]
-    saved: list[float]           # Netto-Zufluss auf Sparkonten in Euro
-    rate: list[float]            # Prozent (Netto-Zufluss ÷ Einnahmen)
-    surplus: list[float]         # Einnahmen − Ausgaben in Euro
-    surplus_rate: list[float]    # Prozent (Überschuss ÷ Einnahmen)
+    saved: list[float]                  # Netto-Zufluss auf Sparkonten in Euro
+    # null = keine Einnahmen im Zeitraum, also keine Quote bestimmbar
+    rate: list[float | None]            # Prozent (Netto-Zufluss ÷ Einnahmen)
+    surplus: list[float]                # Einnahmen − Ausgaben in Euro
+    surplus_rate: list[float | None]    # Prozent (Überschuss ÷ Einnahmen)
 
 
 class YearComparisonRow(BaseModel):

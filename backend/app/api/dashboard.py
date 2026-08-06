@@ -297,7 +297,15 @@ def savings_rate(date_from: date | None = None, date_to: date | None = None,
         if acc is not None and acc.type in SAVINGS_TYPES:
             # Sparkonto-Seite: Zugang zählt positiv, Rückbuchung negativ
             saved[m] += t.amount_ref
-        elif cat is not None and cat.is_transfer_like and not cat.transfer_target_account_id:
+            # ... und NICHT zusätzlich in die Bezugsgröße: derselbe Euro wäre
+            # sonst gleichzeitig der Zähler und Teil des Nenners. Ein noch
+            # nicht verknüpfter Übertrag aufs Tagesgeld trieb die Quote so
+            # künstlich Richtung 100 % und darüber hinaus. Zinsen auf dem
+            # Sparkonto zählen hier deshalb als Gespartes, nicht als
+            # Einkommen – in /dashboard/summary bleiben sie Einnahme, dort
+            # ist danach gefragt.
+            continue
+        if cat is not None and cat.is_transfer_like and not cat.transfer_target_account_id:
             # Sparplan ohne mitgeführtes Zielkonto: die Abbuchung auf der
             # zahlenden Seite IST der Sparbetrag, daher Vorzeichen drehen
             saved[m] += -t.amount_ref
@@ -308,8 +316,11 @@ def savings_rate(date_from: date | None = None, date_to: date | None = None,
         else:
             out[m] += -t.amount_ref
 
-    def pct(value: Decimal, base: Decimal) -> float:
-        return round(float(value / base * 100), 1) if base else 0.0
+    def pct(value: Decimal, base: Decimal) -> float | None:
+        # Ohne Einnahmen gibt es keine Quote. Früher stand hier 0 % – das las
+        # sich wie "nichts gespart", obwohl schlicht die Bezugsgröße fehlt.
+        # None lässt im Diagramm eine Lücke, statt eine Null zu behaupten.
+        return round(float(value / base * 100), 1) if base else None
 
     return SavingsRateOut(
         months=months,

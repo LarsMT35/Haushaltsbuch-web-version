@@ -339,6 +339,25 @@ automatisch aus.
   jeweiligen Kachel und werden mit dem Layout gespeichert – pro Nutzer und
   pro Bereich.
 
+### v1.7.5 – Sparquote bereinigt, Erklärungen beim Überfahren
+
+- ✅ **Kein doppelt gezählter Euro mehr in der Sparquote.** Ein Zugang auf ein
+  Sparkonto zählte bisher als Gespartes *und* als Einnahme – derselbe Betrag
+  war damit Zähler und Teil des Nenners. Ein noch nicht verknüpfter Übertrag
+  aufs Tagesgeld trieb die Quote so künstlich Richtung 100 % und darüber.
+  Zugänge auf Sparkonten zählen jetzt nur noch als Gespartes. (In den
+  *Kennzahlen* bleiben Zinsen weiterhin Einnahme – dort ist danach gefragt.)
+- ✅ **Ohne Einnahmen gibt es keine Quote.** Statt „0 %“ – was sich wie „nichts
+  gespart“ las, obwohl schlicht die Bezugsgröße fehlte – bleibt der Monat im
+  Prozent-Diagramm jetzt leer.
+- ✅ **Erklärungen beim Überfahren**: Schaltflächen, die sich nicht von selbst
+  erklären, zeigen beim Daraufzeigen einen erklärenden Satz, der stehen
+  bleibt, bis die Maus wieder weg ist. Der eingebaute `title`-Hinweis des
+  Browsers taugte dafür nicht: er erscheint erst nach gut einer Sekunde,
+  verschwindet nach wenigen von selbst wieder und lässt sich nicht gestalten.
+  Rein über CSS gelöst (`data-tip`), also ohne JavaScript und ohne hängende
+  Kästen nach einem Neuzeichnen; auf Touch-Geräten bleibt er aus.
+
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).
 
