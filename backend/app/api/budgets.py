@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import accessible_account_ids, get_current_user, require_account_access, require_admin
-from ..models import Account, AppSetting, Budget, Category, Transaction, User
+from ..models import Account, AppSetting, Budget, Category, Transaction, User, UserSettings
 from ..schemas import (BudgetCreate, BudgetOut, BudgetStatusOut, BudgetStatusRow,
                        BudgetThresholds, PeriodBoundsOut, PeriodSettingIn,
                        PeriodSettingOut)
@@ -105,7 +105,7 @@ def budget_status(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
     `account_ids` (Mehrfachauswahl) hat Vorrang vor dem einzelnen `account_id`
     und trägt die Bereichstrennung des Dashboards mit (4.9.1).
     """
-    start_day = get_start_day(db)
+    start_day = get_start_day(db, user)
     first, last = period_bounds(month, start_day)
 
     ids = accessible_account_ids(db, user)
@@ -176,7 +176,7 @@ def budget_status(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
 
 # ------------------------------------------------ Abrechnungsmonat (4.9)
 
-def _period_out(day: int) -> PeriodSettingOut:
+def _period_out(day: int, is_own_choice: bool = False) -> PeriodSettingOut:
     current = current_period(day)
     cur_from, cur_to = period_bounds(current, day)
     previous = period_key(cur_from - timedelta(days=1), day)
@@ -184,12 +184,15 @@ def _period_out(day: int) -> PeriodSettingOut:
     return PeriodSettingOut(start_day=day, current_period=current,
                             current_from=cur_from, current_to=cur_to,
                             previous_period=previous,
-                            previous_from=prev_from, previous_to=prev_to)
+                            previous_from=prev_from, previous_to=prev_to,
+                            is_own_choice=is_own_choice)
 
 @router.get("/period", response_model=PeriodSettingOut)
 def get_period_setting(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Starttag des Abrechnungsmonats. 1 = Kalendermonat."""
-    return _period_out(get_start_day(db))
+    """Eigener Starttag des Abrechnungsmonats. 1 = Kalendermonat."""
+    settings = db.get(UserSettings, user.id)
+    return _period_out(get_start_day(db, user),
+                       is_own_choice=settings is not None and settings.period_start_day is not None)
 
 
 @router.get("/period/bounds", response_model=PeriodBoundsOut)
@@ -202,7 +205,7 @@ def get_period_bounds(month: str, db: Session = Depends(get_db),
     die Periodenregel nicht ein zweites Mal in JavaScript existiert (Prinzip 6).
     """
     try:
-        first, last = period_bounds(month, get_start_day(db))
+        first, last = period_bounds(month, get_start_day(db, user))
     except (ValueError, TypeError):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail="Monat muss das Format YYYY-MM haben.")
@@ -211,18 +214,20 @@ def get_period_bounds(month: str, db: Session = Depends(get_db),
 
 @router.put("/period", response_model=PeriodSettingOut)
 def set_period_setting(payload: PeriodSettingIn, db: Session = Depends(get_db),
-                       admin: User = Depends(require_admin)):
-    """Starttag ändern – wirkt nur auf Auswertungen, nie auf Buchungsdaten.
+                       user: User = Depends(get_current_user)):
+    """Eigenen Starttag setzen – wirkt nur auf die eigenen Auswertungen.
 
-    Da nur Abweichungen an den Buchungen gespeichert werden, ordnen sich alle
-    übrigen Buchungen automatisch neu ein.
+    Seit v1.7.1 wählt das jeder für sich: der Zahltag ist nichts, was ein
+    Administrator für andere festlegen kann. Buchungsdaten, Kontostände und
+    der Saldo-Abgleich bleiben in jedem Fall unberührt; da an den Buchungen
+    nur Abweichungen gespeichert sind, ordnet sich alles Übrige neu ein.
     """
     day = normalize_start_day(payload.start_day)
-    setting = db.get(AppSetting, PERIOD_KEY)
-    if setting is None:
-        setting = AppSetting(key=PERIOD_KEY, value={})
-        db.add(setting)
-    setting.value = {"start_day": day}
-    log(db, admin.id, "app_setting", PERIOD_KEY, "update", setting.value)
+    settings = db.get(UserSettings, user.id)
+    if settings is None:
+        settings = UserSettings(user_id=user.id)
+        db.add(settings)
+    settings.period_start_day = day
+    log(db, user.id, "user_settings", str(user.id), "period", {"start_day": day})
     db.commit()
-    return _period_out(day)
+    return _period_out(day, is_own_choice=True)

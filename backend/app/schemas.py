@@ -415,6 +415,9 @@ class PeriodSettingIn(BaseModel):
 class PeriodSettingOut(BaseModel):
     """Abrechnungsmonat (4.9). start_day = 1 bedeutet Kalendermonat.
 
+    Seit v1.7.1 wählt jeder Nutzer den Starttag für seine EIGENEN Auswertungen;
+    `is_own_choice = False` heißt, es gilt noch die app-weite Voreinstellung.
+
     Die Grenzen kommen bewusst aus dem Backend: sonst müsste das Frontend die
     Periodenregel ein zweites Mal implementieren und beide könnten auseinander
     laufen (Prinzip 6).
@@ -427,6 +430,7 @@ class PeriodSettingOut(BaseModel):
     previous_period: str
     previous_from: date
     previous_to: date
+    is_own_choice: bool = False
 
 
 class PeriodBoundsOut(BaseModel):

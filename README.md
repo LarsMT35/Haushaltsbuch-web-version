@@ -267,6 +267,22 @@ automatisch aus.
   Alembic-Migrationen auf einer leeren Datenbank durchlaufen – Letzteres fiel
   sonst erst beim Deployment auf.
 
+### v1.7.1 – Abrechnungsmonat je Nutzer
+
+- ✅ **Jeder wählt seinen eigenen Abrechnungsmonat.** Bisher war der Starttag
+  eine app-weite Einstellung, die nur ein Administrator ändern durfte – wer
+  kein Administrator war, konnte schlicht nicht speichern. Der Zahltag ist
+  aber nichts Gemeinsames: im selben Haushalt kann eine Person am 27. Gehalt
+  bekommen und die andere am 1. Die Einstellung wirkt jetzt nur auf die
+  **eigenen** Auswertungen (Dashboard, Budgets, Buchungsliste) und lässt die
+  Ansicht der anderen unberührt.
+- ✅ Wer noch nie etwas gewählt hat, erbt weiterhin die bisherige app-weite
+  Voreinstellung – **bestehende Installationen ändern sich dadurch nicht**.
+  Die Oberfläche kennzeichnet den geerbten Zustand als „noch nicht selbst
+  gewählt“.
+- ✅ Unverändert gilt: Buchungsdatum, Betrag, Kontostand und der Saldo-Abgleich
+  gegen die Bank rechnen immer mit dem echten Datum.
+
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).
 

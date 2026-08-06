@@ -196,7 +196,7 @@ async function changePassword() {
 
       <!-- Abrechnungsmonat (4.9) -->
       <div class="tile wide">
-        <h3>Abrechnungsmonat</h3>
+        <h3>Abrechnungsmonat <span class="hint">gilt nur für deine Ansicht</span></h3>
         <p class="hint">Wer sein Gehalt am Monatsende bekommt, lebt davon bis zum nächsten
           Zahltag – der Kalendermonat ist dafür das falsche Raster, bis zum Gehaltseingang
           sähe jeder laufende Monat tiefrot aus. Mit Starttag <strong>27</strong> läuft der
@@ -205,16 +205,18 @@ async function changePassword() {
         <div class="form-row">
           <div><label>Monatsbeginn am Tag</label>
             <input type="number" min="1" max="28" v-model.number="periodDay" style="width: 5rem" /></div>
-          <button class="primary" :disabled="!user?.is_admin" @click="savePeriod">Speichern</button>
+          <button class="primary" @click="savePeriod">Speichern</button>
           <span v-if="period" class="hint" style="align-self: center">
             Aktueller Zeitraum <strong>{{ period.current_period }}</strong>:
             {{ fmtDate(period.current_from) }} – {{ fmtDate(period.current_to) }}
+            <template v-if="!period.is_own_choice"> · noch nicht selbst gewählt</template>
           </span>
         </div>
-        <p class="hint">Wirkt ausschließlich auf Auswertungen. Buchungsdaten, Kontostände und
-          der Saldo-Abgleich rechnen weiter mit dem echten Datum. Einzelne Buchungen lassen
-          sich in der Buchungsliste abweichend zuordnen – etwa wenn das Gehalt wegen eines
-          Wochenendes früher kam.</p>
+        <p class="hint">Die Einstellung gehört <strong>dir</strong>: jeder im Haushalt wählt
+          seinen eigenen Zahltag, niemand stellt ihn für andere ein. Sie wirkt ausschließlich
+          auf Auswertungen – Buchungsdaten, Kontostände und der Saldo-Abgleich rechnen weiter
+          mit dem echten Datum. Einzelne Buchungen lassen sich in der Buchungsliste abweichend
+          zuordnen – etwa wenn das Gehalt wegen eines Wochenendes früher kam.</p>
       </div>
 
       <div class="tile wide">

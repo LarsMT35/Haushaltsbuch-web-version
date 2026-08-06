@@ -18,7 +18,7 @@ router = APIRouter(prefix="/transfers", tags=["transfers"])
 def suggestions(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     pairs = svc.transfer_suggestions(db, accessible_account_ids(db, user))
     # gleiche Ausgabe wie in der Buchungsliste: wirksamer Abrechnungsmonat
-    start_day = get_start_day(db)
+    start_day = get_start_day(db, user)
     return [TransferSuggestion(transaction_a=tx_out(a, start_day),
                                transaction_b=tx_out(b, start_day)) for a, b in pairs]
 

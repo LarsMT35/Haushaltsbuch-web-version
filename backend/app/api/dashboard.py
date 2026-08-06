@@ -102,7 +102,7 @@ def summary(date_from: date | None = None, date_to: date | None = None,
                 .filter(Account.id.in_(filter_ids), Account.archived.is_(False)).all()}
     categories = {c.id: c for c in db.query(Category).all()}
 
-    start_day = get_start_day(db)
+    start_day = get_start_day(db, user)
     period_keys = covered_periods(date_from, date_to, start_day)
     txs = [t for t in db.query(Transaction).options(selectinload(Transaction.splits))
            .filter(Transaction.account_id.in_(filter_ids),
@@ -202,7 +202,7 @@ def networth(date_from: date | None = None, date_to: date | None = None,
         date_to = date.today()
     if date_from is None:
         date_from = date_to.replace(day=1).replace(year=date_to.year - 1)
-    start_day = get_start_day(db)
+    start_day = get_start_day(db, user)
     months = period_range(date_from, date_to, start_day)
     if not months:
         return NetWorthOut(months=[], series=[], total=[])
@@ -278,7 +278,7 @@ def savings_rate(date_from: date | None = None, date_to: date | None = None,
 
     # Hier bewusst OHNE transfer_id-Filter: der Zufluss auf die Sparkonten
     # besteht ja gerade aus Umbuchungen.
-    start_day = get_start_day(db)
+    start_day = get_start_day(db, user)
     months = period_range(date_from, date_to, start_day)
     covered = covered_periods(date_from, date_to, start_day)
     txs = [t for t in db.query(Transaction)
@@ -330,7 +330,7 @@ def year_comparison(account_ids: list[int] | None = Query(None),
     behandeln" zählen hier nicht als Ausgabe, wie echte Umbuchungen auch."""
     ids = accessible_account_ids(db, user)
     filter_ids = ([aid for aid in account_ids if aid in ids] or ids) if account_ids else ids
-    start_day = get_start_day(db)
+    start_day = get_start_day(db, user)
     txs = (db.query(Transaction).options(selectinload(Transaction.splits))
            .filter(Transaction.account_id.in_(filter_ids), Transaction.transfer_id.is_(None))
            .all())
@@ -374,7 +374,7 @@ def deposits(account_ids: list[int] | None = Query(None),
     hinweg zusammen.
     """
     filter_ids = _scoped_ids(db, user, account_ids)
-    start_day = get_start_day(db)
+    start_day = get_start_day(db, user)
     if date_to is None:
         date_to = date.today()
     if date_from is None:
@@ -432,7 +432,7 @@ def cumulative(month: str | None = None, account_ids: list[int] | None = Query(N
     während des Monats, solange man noch gegensteuern kann.
     """
     today = date.today()
-    start_day = get_start_day(db)
+    start_day = get_start_day(db, user)
     key = month or current_period(start_day)
     first, last = period_bounds(key, start_day)
     prev_key = period_key(first - timedelta(days=1), start_day)
@@ -489,7 +489,7 @@ def category_trend(date_from: date | None = None, date_to: date | None = None,
         date_to = date.today()
     if date_from is None:
         date_from = (date_to.replace(day=1) - timedelta(days=334)).replace(day=1)
-    start_day = get_start_day(db)
+    start_day = get_start_day(db, user)
     months = period_range(date_from, date_to, start_day)
 
     filter_ids = _scoped_ids(db, user, account_ids)
@@ -534,7 +534,7 @@ def top_counterparties(date_from: date | None = None, date_to: date | None = Non
     filter_ids = _scoped_ids(db, user, account_ids)
     transfer_like_ids = {cid for (cid,) in db.query(Category.id)
                          .filter(Category.is_transfer_like.is_(True)).all()}
-    start_day = get_start_day(db)
+    start_day = get_start_day(db, user)
     txs = [t for t in db.query(Transaction).options(selectinload(Transaction.splits))
            .filter(Transaction.account_id.in_(filter_ids),
                    Transaction.transfer_id.is_(None),

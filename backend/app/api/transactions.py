@@ -96,7 +96,7 @@ def list_transactions(account_id: int | None = None, category_id: int | None = N
     total = q.count()
     items = (q.order_by(Transaction.booking_date.desc(), Transaction.id.desc())
              .offset(offset).limit(limit).all())
-    start_day = get_start_day(db)
+    start_day = get_start_day(db, user)
     return TransactionPage(total=total, items=[_out(t, start_day) for t in items])
 
 
@@ -122,7 +122,7 @@ def create_manual(payload: ManualTransactionCreate,
     auto_link_transfers(db, ids)
     auto_mirror_category_transfers(db, ids)
     db.refresh(tx)
-    return _out(tx, get_start_day(db))
+    return _out(tx, get_start_day(db, user))
 
 
 @router.put("/{transaction_id}", response_model=TransactionOut)
@@ -169,7 +169,7 @@ def update_transaction(transaction_id: int, payload: TransactionUpdate,
     if "category_id" in data and data["category_id"] != old_category_id:
         auto_mirror_category_transfers(db, accessible_account_ids(db, user))
         db.refresh(tx)
-    return _out(tx, get_start_day(db))
+    return _out(tx, get_start_day(db, user))
 
 
 @router.delete("/{transaction_id}")
@@ -214,7 +214,7 @@ def set_splits(transaction_id: int, splits: list[SplitIn],
     log(db, user.id, "transaction", tx.id, "split", {"parts": len(splits)})
     db.commit()
     db.refresh(tx)
-    return _out(tx, get_start_day(db))
+    return _out(tx, get_start_day(db, user))
 
 
 @router.put("/{transaction_id}/tags", response_model=TransactionOut)
@@ -239,7 +239,7 @@ def set_tags(transaction_id: int, tag_names: list[str],
     log(db, user.id, "transaction", tx.id, "tags", {"tags": tag_names})
     db.commit()
     db.refresh(tx)
-    return _out(tx, get_start_day(db))
+    return _out(tx, get_start_day(db, user))
 
 
 @router.get("/tags", response_model=list[TagOut])

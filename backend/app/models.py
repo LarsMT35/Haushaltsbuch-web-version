@@ -50,6 +50,11 @@ class UserSettings(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
     color_scheme: Mapped[str] = mapped_column(String(32), default="hell")
     dark_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Abrechnungsmonat je Nutzer (v1.7.1). NULL = noch nichts gewaehlt, dann
+    # gilt die app-weite Voreinstellung. Zwei Menschen im selben Haushalt
+    # koennen unterschiedliche Zahltage haben, und die Einteilung betrifft
+    # ohnehin nur die eigene Auswertung, nie die Daten.
+    period_start_day: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     prefs: Mapped[dict] = mapped_column(JSON, default=dict)
 
     user: Mapped[User] = relationship(back_populates="settings")

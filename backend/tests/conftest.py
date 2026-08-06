@@ -32,19 +32,26 @@ def auth_headers(client):
 
 @pytest.fixture(autouse=True)
 def calendar_month_by_default():
-    """Die Test-DB ist sessionweit geteilt, und der Abrechnungsmonat ist eine
-    app-weite Einstellung – der Demo-Seed setzt ihn z.B. auf den 27. Ohne
-    Rücksetzen hinge das Ergebnis eines Tests an der Reihenfolge. Wer einen
-    verschobenen Starttag braucht, setzt ihn im Test selbst."""
+    """Die Test-DB ist sessionweit geteilt – der Demo-Seed setzt den
+    Abrechnungsmonat z.B. auf den 27. Ohne Rücksetzen hinge das Ergebnis eines
+    Tests an der Reihenfolge. Wer einen verschobenen Starttag braucht, setzt
+    ihn im Test selbst.
+
+    Zurückgesetzt werden BEIDE Ebenen: die app-weite Voreinstellung und die
+    eigene Wahl je Nutzer (seit v1.7.1). Nur die app-weite zu leeren reichte
+    nicht mehr – eine im Test gesetzte Nutzerwahl überlebte sonst bis ans Ende
+    des Laufs und verschob die Monatsgrenzen aller folgenden Tests.
+    """
     from app.db import SessionLocal
-    from app.models import AppSetting
+    from app.models import AppSetting, UserSettings
     from app.services.periods import SETTING_KEY
 
     with SessionLocal() as db:
         setting = db.get(AppSetting, SETTING_KEY)
         if setting is not None:
             db.delete(setting)
-            db.commit()
+        db.query(UserSettings).update({UserSettings.period_start_day: None})
+        db.commit()
     yield
 
 

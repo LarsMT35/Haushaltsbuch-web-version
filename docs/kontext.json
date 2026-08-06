@@ -1,7 +1,6 @@
 {
   "_hinweis": "Wissen über dieses Projekt, das sich NICHT aus Code, Commits oder den übrigen docs/*.md ableiten lässt – Betriebsumgebung, Historie, offene Entscheidungen. Gedacht für zukünftige Bearbeiter (Mensch oder KI), damit dieser Kontext nicht bei jeder neuen Session verloren geht. Bei Änderungen an Deployment/Umgebung bitte hier nachziehen.",
   "stand": "2026-08-06",
-
   "deployment": {
     "produktiv": {
       "host": "Proxmox-Host, LXC-Container",
@@ -21,7 +20,6 @@
       "produktion_unberuehrt": "eigene DB/Volume/Compose-Projektname, ein Reset des Demo-Stacks betrifft die Produktion nicht"
     }
   },
-
   "repository_historie": {
     "ursprung": "Repo hieß zunächst 'Test' auf GitHub, wurde vom Nutzer manuell umbenannt/geleert",
     "aktueller_name": "Haushaltsbuch-web-version",
@@ -29,7 +27,6 @@
     "origin_url": "https://github.com/larsmt35/haushaltsbuch-web-version",
     "hinweis": "GitHub liefert bei Push/Fetch eine 'repository moved' Meldung, funktioniert aber – Redirect ist aktiv, kein Handlungsbedarf"
   },
-
   "nutzungskontext": {
     "wer": "Lars (Eigentümer/Admin) + Partner (Leser auf gemeinsamem Konto)",
     "bank": "Sparkasse (Hauptkonto), reale Buchungen ursprünglich aus einer historisch gepflegten Excel-Whitelist importiert",
@@ -37,7 +34,6 @@
     "konten_struktur_real": "Giro (privat) + Tagesgeld (privat) + Depot (privat, ohne eigenen Bank-Feed – nur v1.3b-Gegenbuchungen) + gemeinsames Konto mit Partner",
     "excel_vorgeschichte": "Vor dieser App wurde ein Excel-Haushaltsbuch geführt; für Monatsverschiebung wurden dort Buchungen manuell um einen Monat versetzt kopiert – genau dieses Problem hat v1.6 sauber gelöst (Zuordnung statt Kopie)."
   },
-
   "architektur_entscheidungen_mit_langer_begruendung": [
     {
       "thema": "is_transfer_like ohne transfer_target_account_id",
@@ -54,16 +50,18 @@
     {
       "thema": "Dashboard-Modus 'Gemeinsam/Persönlich/Gesamt' trennt nach Account.is_household, nicht nach Zahl der Rollen",
       "warum": "Ursprünglich aus Rollenzahl abgeleitet (>1 Nutzer = gemeinsam) – das kippte fälschlich, sobald der Partner NUR Lesezugriff auf ein eigentlich privates Konto bekam, oder ein Haushaltskonto (noch) keinen zweiten Nutzer hatte."
+    },
+    {
+      "thema": "Abrechnungsmonat: UserSettings.period_start_day nullable statt Wert je Nutzer zu migrieren",
+      "warum": "NULL heisst 'noch nie selbst gewaehlt' und faellt auf die app-weite Voreinstellung zurueck. Haette die Migration den alten app-weiten Wert in jede UserSettings-Zeile kopiert, waere die Unterscheidung 'geerbt' vs. 'bewusst gewaehlt' fuer immer verloren - und ein spaeteres Aendern der Voreinstellung wuerde niemanden mehr erreichen. Ausserdem wuerde der Wert bei Nutzern haengen, die es nie interessiert hat."
     }
   ],
-
   "ci": {
     "wo": ".github/workflows/ci.yml – läuft bei Push auf main, bei Pull Requests und manuell (workflow_dispatch)",
     "jobs": "Backend-Tests (pytest), Frontend-Build (npm ci + vite build), Alembic-Migrationen gegen eine leere SQLite-Datenbank",
     "versionen_gekoppelt": "Python 3.12 und Node 22 sind bewusst dieselben Versionen wie in backend/Dockerfile bzw. frontend/Dockerfile. Wird eine davon dort angehoben, muss die Workflow-Datei mitgezogen werden – sonst testet die CI etwas anderes als das, was ausgeliefert wird.",
     "pytest_nicht_in_requirements": "Testabhängigkeiten stehen in backend/requirements-dev.txt (zieht requirements.txt mit ein), damit das Container-Image sie nicht mitschleppt."
   },
-
   "betriebs_eigenheiten": {
     "nginx_cache": "index.html wird mit no-cache/no-store ausgeliefert, /assets/ dagegen langfristig gecacht (immutable) – absichtlich seit Commit 2a9a6d2, weil Nutzer nach Updates zunächst veraltete Seiten im Browser sah.",
     "ollama_optional": "OLLAMA_URL leer = Funktion komplett unsichtbar in der UI, kein Fallback-Modus. Läuft typischerweise auf einem ANDEREN Rechner als der Container (GPU-PC im LAN), nicht im selben Compose-Stack – Ollama muss dort per OLLAMA_HOST=0.0.0.0 erreichbar gemacht werden (lauscht sonst nur auf 127.0.0.1)."

@@ -20,7 +20,7 @@ from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
-from ..models import AppSetting
+from ..models import AppSetting, User, UserSettings
 
 SETTING_KEY = "period"
 DEFAULT_START_DAY = 1
@@ -28,11 +28,30 @@ DEFAULT_START_DAY = 1
 MAX_START_DAY = 28
 
 
-def get_start_day(db: Session) -> int:
+def get_app_start_day(db: Session) -> int:
+    """App-weite Voreinstellung – gilt für alle, die selbst nichts gewählt haben."""
     setting = db.get(AppSetting, SETTING_KEY)
     if setting is None:
         return DEFAULT_START_DAY
     return normalize_start_day(setting.value.get("start_day", DEFAULT_START_DAY))
+
+
+def get_start_day(db: Session, user: User | None = None) -> int:
+    """Wirksamer Starttag des Abrechnungsmonats – seit v1.7.1 je Nutzer.
+
+    Der Zahltag ist etwas Persönliches: im selben Haushalt kann eine Person am
+    27. Gehalt bekommen und die andere am 1. Deshalb wählt ihn jeder für die
+    EIGENE Auswertung. Ohne eigene Wahl (NULL) gilt weiter die app-weite
+    Voreinstellung – bestehende Installationen ändern sich dadurch nicht.
+
+    `user=None` liefert bewusst nur die Voreinstellung, für Aufrufer ohne
+    Nutzerbezug.
+    """
+    if user is not None:
+        settings = db.get(UserSettings, user.id)
+        if settings is not None and settings.period_start_day is not None:
+            return normalize_start_day(settings.period_start_day)
+    return get_app_start_day(db)
 
 
 def normalize_start_day(value) -> int:
