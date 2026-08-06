@@ -57,18 +57,6 @@
     }
   ],
 
-  "bekannte_luecken_offen_liegen_lassen": {
-    "hinweis": "Explizit im Gespräch mit dem Nutzer identifiziert, aber NICHT umgesetzt (kein Auftrag oder bewusst zurückgestellt) – nicht aus Tests/Code ersichtlich, dass diese fehlen:",
-    "punkte": [
-      "Kein automatischer Bankabruf (FinTS/HBCI) – weiterhin manueller CSV-Import. Größtes noch offenes Komfort-Feature, aber als eigenes Projekt eingeschätzt (TAN-Verfahren, Zugangsdaten-Speicherung).",
-      "Diagramme/Kacheln sind keine Sackgassen mehr im Sinne von Klick-Navigation NICHT umgesetzt – Klick auf ein Kategorie-Segment springt nicht automatisch zur gefilterten Buchungsliste.",
-      "Keine CI/GitHub-Actions-Pipeline – 91 Tests existieren, laufen aber nirgends automatisch bei Push.",
-      "/dashboard/deposits nimmt weiterhin nur ein einzelnes account_id (kein Mehrfachauswahl-Support wie die übrigen Dashboard-Endpunkte).",
-      "Kein Rate-Limiting auf /auth/login (im LAN-Kontext als unkritisch bewertet).",
-      "Keine automatisierten Frontend-Tests (nur Backend-Pytest + manuelle Playwright-Stichproben während der Entwicklung, nicht Teil der Test-Suite)."
-    ]
-  },
-
   "betriebs_eigenheiten": {
     "nginx_cache": "index.html wird mit no-cache/no-store ausgeliefert, /assets/ dagegen langfristig gecacht (immutable) – absichtlich seit Commit 2a9a6d2, weil Nutzer nach Updates zunächst veraltete Seiten im Browser sah.",
     "ollama_optional": "OLLAMA_URL leer = Funktion komplett unsichtbar in der UI, kein Fallback-Modus. Läuft typischerweise auf einem ANDEREN Rechner als der Container (GPU-PC im LAN), nicht im selben Compose-Stack – Ollama muss dort per OLLAMA_HOST=0.0.0.0 erreichbar gemacht werden (lauscht sonst nur auf 127.0.0.1)."
