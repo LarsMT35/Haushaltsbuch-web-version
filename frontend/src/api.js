@@ -77,7 +77,11 @@ export async function login(username, password) {
 export function exportUrl(params) {
   const url = new URL(BASE + '/transactions/export.csv', window.location.origin)
   for (const [k, v] of Object.entries(params || {})) {
-    if (v !== null && v !== undefined && v !== '') url.searchParams.set(k, v)
+    if (v === null || v === undefined || v === '') continue
+    // wie in request(): Arrays als wiederholter Key, sonst käme beim Backend
+    // eine kommaseparierte Zeichenkette an
+    if (Array.isArray(v)) for (const item of v) url.searchParams.append(k, item)
+    else url.searchParams.set(k, v)
   }
   return url.toString()
 }

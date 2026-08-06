@@ -1,7 +1,10 @@
 <script setup>
 import { computed, inject, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { api, fmtAmount, fmtDate } from '../api.js'
 import ChartCanvas from '../components/ChartCanvas.vue'
+
+const router = useRouter()
 
 const accounts = inject('accounts')
 const summary = ref(null)          // gewählter Zeitraum -> Kennzahlen, Kategorien
@@ -314,13 +317,20 @@ function resetSize(id) {
 }
 
 // ------------------------------------------------------------------- Laden
-// Einzahlungstransparenz braucht ein konkretes gemeinsames Konto (4.9)
+// Einzahlungstransparenz (4.9). Leere Auswahl = alle gemeinsamen Konten: bei
+// mehreren Haushaltskonten zählen die Einzahlungen einer Person zusammen,
+// statt dass man sie über mehrere Kacheln im Kopf addieren muss.
 const depositAccountId = ref('')
 
+function depositAccountIds() {
+  if (depositAccountId.value) return [depositAccountId.value]
+  return householdAccounts.value.map((a) => a.id)
+}
+
 async function loadDeposits() {
-  if (!depositAccountId.value || !isVisible('deposits')) { deposits.value = null; return }
-  deposits.value = await api.get('/dashboard/deposits',
-    { ...trendRange(), account_id: depositAccountId.value })
+  const ids = depositAccountIds()
+  if (!ids.length || !isVisible('deposits')) { deposits.value = null; return }
+  deposits.value = await api.get('/dashboard/deposits', { ...trendRange(), account_ids: ids })
 }
 
 async function load() {
@@ -357,9 +367,9 @@ async function load() {
 }
 
 function pickDepositAccount() {
-  if (householdAccounts.value.length && !depositAccountId.value) {
-    depositAccountId.value = householdAccounts.value[0].id
-  }
+  // Auswahl verwerfen, sobald das Konto nicht mehr zum Haushalt gehört
+  const ids = householdAccounts.value.map((a) => a.id)
+  if (depositAccountId.value && !ids.includes(depositAccountId.value)) depositAccountId.value = ''
 }
 
 onMounted(async () => {
@@ -420,6 +430,62 @@ const cashflow = computed(() => {
 // Waagerechte Balken statt Donut: Längen vergleicht das Auge deutlich
 // zuverlässiger als Kreissegmente, gerade bei vielen Kategorien.
 const topCategories = computed(() => (summary.value?.by_category || []).slice(0, 10))
+
+// ------------------------------------------- Sprung in die Buchungsliste
+// Ein Diagramm beantwortet "wie viel", die Buchungsliste "woraus". Ohne
+// diesen Weg musste man den Filter von Hand nachbauen, um nachzusehen –
+// mitsamt der Gefahr, dabei einen anderen Zeitraum zu erwischen.
+
+/** Öffnet die Buchungsliste mit dem Bereich (Modus + Kontenfilter) und
+ *  standardmäßig dem gewählten Zeitraum. `extra` überschreibt beides. */
+function openTransactions(extra = {}) {
+  router.push({
+    path: '/buchungen',
+    query: {
+      account_ids: scopedAccountIds(),
+      date_from: filter.value.date_from,
+      date_to: filter.value.date_to,
+      ...extra,
+    },
+  })
+}
+
+/** Verlaufs-Kacheln liefern einen Abrechnungsmonat statt des gewählten
+ *  Zeitraums. Dessen Grenzen rechnet das Backend aus – die Periodenregel
+ *  darf nicht ein zweites Mal in JavaScript existieren (Prinzip 6). */
+async function openMonth(month, extra = {}) {
+  if (!month) return
+  const b = await api.get('/budgets/period/bounds', { month }).catch(() => null)
+  if (!b) return
+  openTransactions({ date_from: b.date_from, date_to: b.date_to, ...extra })
+}
+
+function pickCategory({ index }) {
+  const c = topCategories.value[index]
+  if (!c) return
+  // "Nicht zugeordnet" hat keine Kategorie-ID – dafür gibt es den eigenen Filter
+  openTransactions(c.category_id ? { category_id: c.category_id } : { unassigned: 1 })
+}
+
+function pickCashflowMonth({ index }) {
+  openMonth(cashflow.value?.months[index])
+}
+
+function pickSavingsMonth({ index }) {
+  openMonth(trend.value?.savings_movement[index]?.month)
+}
+
+function pickCategoryTrend({ index, datasetIndex }) {
+  const row = categoryTrend.value?.rows[datasetIndex]
+  openMonth(categoryTrend.value?.months[index],
+            row?.category_id ? { category_id: row.category_id } : {})
+}
+
+function pickDeposit({ index, datasetLabel }) {
+  // Einzahler steckt im Gegenpartei-Feld – die Freitextsuche trifft es
+  openMonth(deposits.value?.months[index],
+            { account_ids: depositAccountIds(), text: datasetLabel })
+}
 
 /** Fixkosten-Sockel: wie viel vom Einkommen ist überhaupt frei verfügbar?
  *  Die zentrale Haushaltszahl – im Fix/Variabel-Diagramm bisher vergraben. */
@@ -676,8 +742,11 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
                 @pointerdown="startResize($event, 'category_trend')"
                 @dblclick="resetSize('category_trend')"></button>
-        <h3>Kategorie-Trend <span class="hint">größte Ausgabenkategorien, letzte {{ TREND_MONTHS }} Monate</span></h3>
-        <ChartCanvas v-if="categoryTrend.rows.length" type="line" :labels="categoryTrend.months"
+        <h3>Kategorie-Trend
+          <span class="hint">größte Ausgabenkategorien, letzte {{ TREND_MONTHS }} Monate –
+            Klick öffnet Kategorie und Monat</span></h3>
+        <ChartCanvas v-if="categoryTrend.rows.length" type="line" clickable @pick="pickCategoryTrend"
+          :labels="categoryTrend.months"
           :datasets="categoryTrend.rows.map((r, i) => ({ label: r.category_name, data: r.values,
             borderColor: palette[i % palette.length], tension: .25, pointRadius: 0 }))" />
         <p v-else class="hint">Keine Ausgaben im Zeitraum.</p>
@@ -708,8 +777,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
                 @pointerdown="startResize($event, 'cashflow')"
                 @dblclick="resetSize('cashflow')"></button>
-        <h3>Einnahmen / Ausgaben im Verlauf <span class="hint">letzte {{ TREND_MONTHS }} Monate</span></h3>
-        <ChartCanvas type="bar" :labels="cashflow.months"
+        <h3>Einnahmen / Ausgaben im Verlauf
+          <span class="hint">letzte {{ TREND_MONTHS }} Monate – Klick öffnet den Monat</span></h3>
+        <ChartCanvas type="bar" clickable @pick="pickCashflowMonth" :labels="cashflow.months"
           :datasets="[
             { label: 'Einnahmen', data: cashflow.income, backgroundColor: '#15803d' },
             { label: 'Ausgaben', data: cashflow.expenses.map((v) => -v), backgroundColor: '#b91c1c' },
@@ -723,8 +793,8 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
                 @pointerdown="startResize($event, 'by_category')"
                 @dblclick="resetSize('by_category')"></button>
-        <h3>Ausgaben nach Kategorie</h3>
-        <ChartCanvas v-if="topCategories.length" type="bar"
+        <h3>Ausgaben nach Kategorie <span class="hint">Klick öffnet die Buchungen</span></h3>
+        <ChartCanvas v-if="topCategories.length" type="bar" clickable @pick="pickCategory"
           :labels="topCategories.map((c) => c.category_name)"
           :datasets="[{ data: topCategories.map((c) => c.value), backgroundColor: palette }]"
           :options="{ indexAxis: 'y', ...NO_LEGEND }" />
@@ -756,8 +826,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
                 @pointerdown="startResize($event, 'savings')"
                 @dblclick="resetSize('savings')"></button>
-        <h3>Monatliche Bewegung der Sparkonten <span class="hint">letzte {{ TREND_MONTHS }} Monate</span></h3>
-        <ChartCanvas type="bar"
+        <h3>Monatliche Bewegung der Sparkonten
+          <span class="hint">letzte {{ TREND_MONTHS }} Monate – Klick öffnet den Monat</span></h3>
+        <ChartCanvas type="bar" clickable @pick="pickSavingsMonth"
           :labels="trend.savings_movement.map((m) => m.month)"
           :datasets="[{ label: 'Bewegung', data: trend.savings_movement.map((m) => m.value),
                         backgroundColor: '#0f766e' }]" />
@@ -850,12 +921,14 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
                 @pointerdown="startResize($event, 'deposits')"
                 @dblclick="resetSize('deposits')"></button>
-        <h3>Einzahlungen pro Person (gemeinsames Konto)</h3>
+        <h3>Einzahlungen pro Person (gemeinsames Konto)
+          <span class="hint">Klick öffnet Einzahler und Monat</span></h3>
         <div v-if="householdAccounts.length">
           <select v-model="depositAccountId" style="margin-bottom: .5rem">
+            <option value="">Alle gemeinsamen Konten</option>
             <option v-for="a in householdAccounts" :key="a.id" :value="a.id">{{ a.name }}</option>
           </select>
-          <ChartCanvas v-if="deposits" type="bar"
+          <ChartCanvas v-if="deposits" type="bar" clickable @pick="pickDeposit"
             :labels="deposits.months"
             :datasets="deposits.depositors.map((d, i) => ({ label: d,
               data: deposits.series.map((s) => s.values[d] || 0),

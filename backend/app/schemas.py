@@ -429,6 +429,15 @@ class PeriodSettingOut(BaseModel):
     previous_to: date
 
 
+class PeriodBoundsOut(BaseModel):
+    """Datumsbereich eines einzelnen Abrechnungsmonats – für den Sprung vom
+    Diagramm-Monat in die gefilterte Buchungsliste."""
+
+    month: str
+    date_from: date
+    date_to: date
+
+
 # --------------------------------------------------------------- Dashboard
 
 class MonthValue(BaseModel):
@@ -643,7 +652,7 @@ class DepositorMonth(BaseModel):
 
 
 class DepositsOut(BaseModel):
-    account_id: int
+    account_ids: list[int]
     months: list[str]
     depositors: list[str]
     series: list[DepositorMonth]

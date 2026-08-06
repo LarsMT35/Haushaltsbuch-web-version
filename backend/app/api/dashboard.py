@@ -10,10 +10,11 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
-from ..deps import accessible_account_ids, get_current_user, require_account_access
+from ..deps import accessible_account_ids, get_current_user
 from ..models import Account, Category, DashboardLayout, Transaction, User
 from ..services.periods import (
     current_period,
@@ -51,6 +52,32 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 SAVINGS_TYPES = {"tagesgeld", "sparbuch", "depot"}
 
 
+def _dec(value) -> Decimal:
+    """SUM() liefert je nach Datenbank Decimal (PostgreSQL) oder float/None
+    (SQLite) – hier auf einen Typ gebracht, damit die Saldenrechnung exakt
+    bleibt und nicht in Gleitkomma abrutscht."""
+    if value is None:
+        return Decimal("0")
+    return value if isinstance(value, Decimal) else Decimal(str(value))
+
+
+def _summed_amounts(db: Session, account_ids: list[int], *,
+                    before: date | None = None) -> dict[int, Decimal]:
+    """Buchungssumme je Konto in EINER Abfrage.
+
+    Vorher summierte jede Kachel je Konto einzeln alle Buchungen in Python –
+    bei mehreren Konten also ein voller Tabellendurchlauf pro Konto und
+    Seitenaufruf. Die Summe kann die Datenbank selbst bilden.
+    """
+    if not account_ids:
+        return {}
+    q = (db.query(Transaction.account_id, func.sum(Transaction.amount))
+         .filter(Transaction.account_id.in_(account_ids)))
+    if before is not None:
+        q = q.filter(Transaction.booking_date < before)
+    return {aid: _dec(total) for aid, total in q.group_by(Transaction.account_id).all()}
+
+
 @router.get("/summary", response_model=DashboardSummary)
 def summary(date_from: date | None = None, date_to: date | None = None,
             account_ids: list[int] | None = Query(None),
@@ -69,13 +96,15 @@ def summary(date_from: date | None = None, date_to: date | None = None,
 
     # Salden folgen der Kontenauswahl: im Dashboard-Modus "Gemeinsam" muss das
     # Gesamtvermögen das des Haushalts sein, nicht das aller Konten (4.9.1).
+    # account_roles wird für "geteilt?" gebraucht und deshalb gleich mitgeladen.
     accounts = {a.id: a for a in db.query(Account)
+                .options(selectinload(Account.account_roles))
                 .filter(Account.id.in_(filter_ids), Account.archived.is_(False)).all()}
     categories = {c.id: c for c in db.query(Category).all()}
 
     start_day = get_start_day(db)
     period_keys = covered_periods(date_from, date_to, start_day)
-    txs = [t for t in db.query(Transaction)
+    txs = [t for t in db.query(Transaction).options(selectinload(Transaction.splits))
            .filter(Transaction.account_id.in_(filter_ids),
                    range_condition(date_from, date_to, start_day)).all()
            if in_selected_range(t, date_from, date_to, start_day, period_keys)]
@@ -133,10 +162,9 @@ def summary(date_from: date | None = None, date_to: date | None = None,
     months = sorted(set(list(monthly_in) + list(monthly_out) + list(savings)))
     balances = []
     total = Decimal("0")
+    booked = _summed_amounts(db, list(accounts))
     for a in accounts.values():
-        bal = (a.opening_balance or Decimal("0")) + sum(
-            (t.amount for t in db.query(Transaction).filter(Transaction.account_id == a.id).all()),
-            Decimal("0"))
+        bal = (a.opening_balance or Decimal("0")) + booked.get(a.id, Decimal("0"))
         total += bal
         balances.append(AccountBalance(account_id=a.id, name=a.name, type=a.type,
                                        balance=float(bal), shared=len(a.account_roles) > 1,
@@ -176,27 +204,40 @@ def networth(date_from: date | None = None, date_to: date | None = None,
         date_from = date_to.replace(day=1).replace(year=date_to.year - 1)
     start_day = get_start_day(db)
     months = period_range(date_from, date_to, start_day)
+    if not months:
+        return NetWorthOut(months=[], series=[], total=[])
     # Der Saldo ist ein Bestand und wird zum echten Stichtag gemessen – hier
     # zählt das Buchungsdatum, nicht eine manuelle Abrechnungsmonat-Zuordnung.
     period_ends = [period_bounds(m, start_day)[1] for m in months]
+    first_start = period_bounds(months[0], start_day)[0]
 
     ids = accessible_account_ids(db, user)
     filter_ids = [aid for aid in account_ids if aid in ids] if account_ids else ids
     accounts = db.query(Account).filter(Account.id.in_(filter_ids or ids), Account.archived.is_(False)).all()
+    acc_ids = [a.id for a in accounts]
+
+    # Zwei Abfragen für alle Konten zusammen statt einer je Konto: der Saldo vor
+    # dem Zeitraum als Summe aus der Datenbank, die Buchungen im Zeitraum
+    # einmal sortiert geholt und hier nach Konto aufgeteilt.
+    opening = _summed_amounts(db, acc_ids, before=first_start)
+    in_range: dict[int, list[tuple[date, Decimal]]] = defaultdict(list)
+    if acc_ids:
+        rows = (db.query(Transaction.account_id, Transaction.booking_date, Transaction.amount)
+                .filter(Transaction.account_id.in_(acc_ids),
+                        Transaction.booking_date >= first_start)
+                .order_by(Transaction.account_id, Transaction.booking_date.asc())
+                .all())
+        for aid, d, amt in rows:
+            in_range[aid].append((d, amt))
+
     series = []
     totals = [Decimal("0")] * len(months)
     for a in accounts:
-        txs = (db.query(Transaction.booking_date, Transaction.amount)
-               .filter(Transaction.account_id == a.id)
-               .order_by(Transaction.booking_date.asc())
-               .all())
-        first_start = period_bounds(months[0], start_day)[0]
         # Saldo vor dem ersten angefragten Zeitraum
-        running = (a.opening_balance or Decimal("0")) + sum(
-            (amt for d, amt in txs if d < first_start), Decimal("0"))
+        running = (a.opening_balance or Decimal("0")) + opening.get(a.id, Decimal("0"))
         values = []
         i = 0
-        txs_in_range = [(d, amt) for d, amt in txs if d >= first_start]
+        txs_in_range = in_range.get(a.id, [])
         for end in period_ends:
             while i < len(txs_in_range) and txs_in_range[i][0] <= end:
                 running += txs_in_range[i][1]
@@ -290,7 +331,7 @@ def year_comparison(account_ids: list[int] | None = Query(None),
     ids = accessible_account_ids(db, user)
     filter_ids = ([aid for aid in account_ids if aid in ids] or ids) if account_ids else ids
     start_day = get_start_day(db)
-    txs = (db.query(Transaction)
+    txs = (db.query(Transaction).options(selectinload(Transaction.splits))
            .filter(Transaction.account_id.in_(filter_ids), Transaction.transfer_id.is_(None))
            .all())
     all_categories = db.query(Category).all()
@@ -321,12 +362,18 @@ def year_comparison(account_ids: list[int] | None = Query(None),
 
 
 @router.get("/deposits", response_model=DepositsOut)
-def deposits(account_id: int, date_from: date | None = None, date_to: date | None = None,
+def deposits(account_ids: list[int] | None = Query(None),
+             date_from: date | None = None, date_to: date | None = None,
              user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Einzahlungs-Transparenz fürs gemeinsame Konto (4.9): eingehende
     Buchungen (keine Umbuchungen) je Monat nach Gegenpartei gruppiert – auf
-    Bank-Exports ist das direkt der Auftraggeber/Einzahler."""
-    require_account_access(db, user, account_id, "reader")
+    Bank-Exports ist das direkt der Auftraggeber/Einzahler.
+
+    Nimmt wie alle übrigen Dashboard-Endpunkte mehrere Konten entgegen; bei
+    mehreren gemeinsamen Konten zählen Einzahlungen derselben Person über alle
+    hinweg zusammen.
+    """
+    filter_ids = _scoped_ids(db, user, account_ids)
     start_day = get_start_day(db)
     if date_to is None:
         date_to = date.today()
@@ -336,7 +383,7 @@ def deposits(account_id: int, date_from: date | None = None, date_to: date | Non
 
     covered = covered_periods(date_from, date_to, start_day)
     txs = [t for t in db.query(Transaction)
-           .filter(Transaction.account_id == account_id,
+           .filter(Transaction.account_id.in_(filter_ids),
                    Transaction.transfer_id.is_(None),
                    Transaction.amount > 0,
                    range_condition(date_from, date_to, start_day)).all()
@@ -354,7 +401,7 @@ def deposits(account_id: int, date_from: date | None = None, date_to: date | Non
 
     series = [DepositorMonth(month=m, values={d: float(per_month[m].get(d, Decimal("0"))) for d in depositors})
               for m in months]
-    return DepositsOut(account_id=account_id, months=months,
+    return DepositsOut(account_ids=sorted(filter_ids), months=months,
                        depositors=sorted(depositors), series=series)
 
 
@@ -394,7 +441,7 @@ def cumulative(month: str | None = None, account_ids: list[int] | None = Query(N
     filter_ids = _scoped_ids(db, user, account_ids)
     transfer_like_ids = {cid for (cid,) in db.query(Category.id)
                          .filter(Category.is_transfer_like.is_(True)).all()}
-    txs = (db.query(Transaction)
+    txs = (db.query(Transaction).options(selectinload(Transaction.splits))
            .filter(Transaction.account_id.in_(filter_ids),
                    Transaction.booking_date >= prev_first,
                    Transaction.booking_date <= last)
@@ -449,7 +496,7 @@ def category_trend(date_from: date | None = None, date_to: date | None = None,
     all_categories = {c.id: c for c in db.query(Category).all()}
     transfer_like_ids = {cid for cid, c in all_categories.items() if c.is_transfer_like}
     covered = covered_periods(date_from, date_to, start_day)
-    txs = [t for t in db.query(Transaction)
+    txs = [t for t in db.query(Transaction).options(selectinload(Transaction.splits))
            .filter(Transaction.account_id.in_(filter_ids),
                    range_condition(date_from, date_to, start_day)).all()
            if in_selected_range(t, date_from, date_to, start_day, covered)]
@@ -488,7 +535,7 @@ def top_counterparties(date_from: date | None = None, date_to: date | None = Non
     transfer_like_ids = {cid for (cid,) in db.query(Category.id)
                          .filter(Category.is_transfer_like.is_(True)).all()}
     start_day = get_start_day(db)
-    txs = [t for t in db.query(Transaction)
+    txs = [t for t in db.query(Transaction).options(selectinload(Transaction.splits))
            .filter(Transaction.account_id.in_(filter_ids),
                    Transaction.transfer_id.is_(None),
                    range_condition(date_from, date_to, start_day)).all()

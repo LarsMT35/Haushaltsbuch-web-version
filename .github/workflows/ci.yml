@@ -1,0 +1,82 @@
+name: CI
+
+# Bis hierher liefen die Tests nur, wenn jemand daran dachte. Jetzt prüft jeder
+# Push und jeder Pull Request beides: dass die Backend-Tests durchlaufen und
+# dass das Frontend überhaupt baut.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: Backend-Tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # gleiche Version wie im Container (backend/Dockerfile)
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Abhängigkeiten installieren
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Tests
+        working-directory: backend
+        run: pytest -q
+
+  frontend:
+    name: Frontend-Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # gleiche Version wie im Container (frontend/Dockerfile)
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Abhängigkeiten installieren
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  migrations:
+    name: Alembic-Migrationen laufen durch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Abhängigkeiten installieren
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Die Migrationen laufen beim Container-Start automatisch – schlägt eine
+      # fehl, merkt man es sonst erst beim Deployment auf dem Zielsystem.
+      - name: upgrade head auf leerer Datenbank
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite:///./ci-migration-check.db
+          SECRET_KEY: ci-secret-key-nur-fuer-den-testlauf
+        run: alembic upgrade head

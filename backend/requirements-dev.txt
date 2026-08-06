@@ -1,0 +1,3 @@
+# Nur für Tests/Entwicklung – nicht im Container-Image (siehe Dockerfile).
+-r requirements.txt
+pytest>=8.2

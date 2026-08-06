@@ -39,9 +39,15 @@ def _out(tx: Transaction, start_day: int) -> TransactionOut:
 def _filtered_query(db: Session, user: User, *, account_id: int | None, category_id: int | None,
                     date_from: date | None, date_to: date | None, text: str | None,
                     amount_min: float | None, amount_max: float | None,
-                    unassigned: bool, include_transfers: bool, tag: str | None = None):
+                    unassigned: bool, include_transfers: bool, tag: str | None = None,
+                    account_ids: list[int] | None = None):
     ids = accessible_account_ids(db, user)
     q = db.query(Transaction).filter(Transaction.account_id.in_(ids))
+    if account_ids:
+        # Bereichsfilter aus dem Dashboard ("Gemeinsam" = mehrere Konten): ohne
+        # ihn zeigte der Sprung aus einem Diagramm mehr Buchungen an, als die
+        # angeklickte Zahl umfasst. Nicht zugängliche IDs fallen still weg.
+        q = q.filter(Transaction.account_id.in_([a for a in account_ids if a in ids]))
     if account_id is not None:
         require_account_access(db, user, account_id, "reader")
         q = q.filter(Transaction.account_id == account_id)
@@ -79,13 +85,14 @@ def list_transactions(account_id: int | None = None, category_id: int | None = N
                       date_from: date | None = None, date_to: date | None = None,
                       text: str | None = None, amount_min: float | None = None,
                       amount_max: float | None = None, unassigned: bool = False,
-                      tag: str | None = None,
+                      tag: str | None = None, account_ids: list[int] | None = Query(None),
                       limit: int = Query(100, le=500), offset: int = 0,
                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     q = _filtered_query(db, user, account_id=account_id, category_id=category_id,
                         date_from=date_from, date_to=date_to, text=text,
                         amount_min=amount_min, amount_max=amount_max,
-                        unassigned=unassigned, include_transfers=True, tag=tag)
+                        unassigned=unassigned, include_transfers=True, tag=tag,
+                        account_ids=account_ids)
     total = q.count()
     items = (q.order_by(Transaction.booking_date.desc(), Transaction.id.desc())
              .offset(offset).limit(limit).all())
@@ -243,13 +250,13 @@ def list_tags(db: Session = Depends(get_db), user: User = Depends(get_current_us
 @router.get("/export.csv")
 def export_csv(account_id: int | None = None, category_id: int | None = None,
                date_from: date | None = None, date_to: date | None = None,
-               text: str | None = None,
+               text: str | None = None, account_ids: list[int] | None = Query(None),
                user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """CSV-Export (4.11) – Datenhoheit: Daten kommen auch wieder heraus."""
     q = _filtered_query(db, user, account_id=account_id, category_id=category_id,
                         date_from=date_from, date_to=date_to, text=text,
                         amount_min=None, amount_max=None, unassigned=False,
-                        include_transfers=True)
+                        include_transfers=True, account_ids=account_ids)
     rows = q.order_by(Transaction.booking_date.asc()).all()
     categories = {c.id: c.name for c in db.query(Category).all()}
     buf = io.StringIO()

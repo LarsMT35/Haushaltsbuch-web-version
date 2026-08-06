@@ -81,14 +81,20 @@ eigene Datenbank, ein eigenes Volume und einen eigenen Compose-Projektnamen.
    jeder Bereich hat eigene Kacheln und ein eigenes Layout. Kacheln lassen
    sich am Griff unten rechts in der Größe ziehen (Doppelklick = zurücksetzen),
    die Diagramme passen sich mit an.
-2. **Handlungsbedarf** – vier unzugeordnete Buchungen, „Jetzt zuordnen".
-3. **Umbuchungen erkennen** (Buchungen) – legt die fehlende Depot-Gegenbuchung
+2. **Klick ins Diagramm** (v1.7) – in *Ausgaben nach Kategorie* auf den Balken
+   „Lebensmittel" klicken: die Buchungsliste öffnet sich mit genau dieser
+   Kategorie und dem Zeitraum der Kachel. Oben steht, welche Konten der Bereich
+   des Dashboards umfasst; *Bereich aufheben* zeigt den Unterschied zu „alle
+   Konten". Genauso öffnen die Verlaufs-Kacheln einen Abrechnungsmonat und
+   *Einzahlungen pro Person* den jeweiligen Einzahler.
+3. **Handlungsbedarf** – vier unzugeordnete Buchungen, „Jetzt zuordnen".
+4. **Umbuchungen erkennen** (Buchungen) – legt die fehlende Depot-Gegenbuchung
    an; Depot-Saldo und Sparquote des Monats steigen sichtbar.
-4. **Mögliche Umbuchungen** – die Bargeldabhebung als Vorschlag bestätigen.
-5. **Budgets** – auf der Startseite die Ampel von grün bis rot; beim Wechsel
+5. **Mögliche Umbuchungen** – die Bargeldabhebung als Vorschlag bestätigen.
+6. **Budgets** – auf der Startseite die Ampel von grün bis rot; beim Wechsel
    zwischen *Gemeinsam* und *Persönlich* wechseln auch die Budgets.
    In *Einstellungen → Abrechnungsmonat* den Starttag auf 1 stellen und
    zurück – die Diagramme rechnen sich sichtbar neu ein.
-6. **Regeln** – „Lebensmittel" ins Suchfeld: findet alle Supermarkt-Regeln.
-7. **Wiederkehrend** – „Erkennung ausführen" verknüpft Netflix nachträglich.
-8. **Import** – die Beispiel-CSV wie oben beschrieben einspielen.
+7. **Regeln** – „Lebensmittel" ins Suchfeld: findet alle Supermarkt-Regeln.
+8. **Wiederkehrend** – „Erkennung ausführen" verknüpft Netflix nachträglich.
+9. **Import** – die Beispiel-CSV wie oben beschrieben einspielen.

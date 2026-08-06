@@ -1,5 +1,5 @@
 <script setup>
-import { inject, onMounted, ref, watch } from 'vue'
+import { computed, inject, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, exportUrl, fmtAmount, fmtDate } from '../api.js'
 
@@ -18,15 +18,36 @@ const aiBusy = ref(false)
 const limit = 100
 const offset = ref(0)
 
-const filter = ref({
-  account_id: route.query.account_id || '',
-  category_id: '',
-  date_from: '',
-  date_to: '',
-  text: '',
-  tag: '',
-  unassigned: route.query.unassigned ? true : false,
-})
+/** Filter aus der URL übernehmen: so springt ein Klick im Dashboard direkt in
+ *  die passend gefilterte Liste, und der Zustand übersteht ein Neuladen. */
+function queryFilter() {
+  const q = route.query
+  return {
+    account_id: q.account_id || '',
+    category_id: q.category_id || '',
+    date_from: q.date_from || '',
+    date_to: q.date_to || '',
+    text: q.text || '',
+    tag: q.tag || '',
+    unassigned: !!q.unassigned,
+  }
+}
+const filter = ref(queryFilter())
+
+/** Bereichsfilter aus dem Dashboard: im Modus "Gemeinsam" sind das mehrere
+ *  Konten. Bewusst neben dem Konto-Auswahlfeld – er begrenzt die Grundmenge,
+ *  das Auswahlfeld verfeinert innerhalb davon. Ohne ihn zeigte die Liste nach
+ *  einem Klick mehr Buchungen an, als die angeklickte Zahl umfasst. */
+function queryScope() {
+  const v = route.query.account_ids
+  if (!v) return []
+  return (Array.isArray(v) ? v : [v]).map(Number).filter((n) => !Number.isNaN(n))
+}
+const scopeIds = ref(queryScope())
+const scopeNames = computed(() => scopeIds.value
+  .map((id) => accounts.value.find((a) => a.id === id)?.name)
+  .filter(Boolean))
+function clearScope() { scopeIds.value = []; offset.value = 0; load() }
 const allTags = ref([])
 
 // v1.1: Detailbereich je Buchung für Splits & Tags
@@ -102,6 +123,7 @@ const showManual = ref(false)
 async function load() {
   const params = { limit, offset: offset.value }
   for (const [k, v] of Object.entries(filter.value)) if (v) params[k] = v
+  if (scopeIds.value.length) params.account_ids = scopeIds.value
   page.value = await api.get('/transactions', params)
   suggestions.value = await api.get('/transfers/suggestions')
 }
@@ -136,9 +158,11 @@ function rejectAi(s) {
   aiSuggestions.value = aiSuggestions.value.filter((x) => x.transaction_id !== s.transaction_id)
 }
 watch(filter, () => { offset.value = 0; load() }, { deep: true })
+// Reihenfolge zählt: der Bereich muss stehen, bevor das Ersetzen von `filter`
+// den Watcher oben auslöst – sonst lädt die Liste einmal mit altem Bereich.
 watch(() => route.query, () => {
-  filter.value.account_id = route.query.account_id || ''
-  filter.value.unassigned = !!route.query.unassigned
+  scopeIds.value = queryScope()
+  filter.value = queryFilter()
 })
 
 function catName(id) {
@@ -207,6 +231,7 @@ async function detectTransfers() {
 function doExport() {
   const params = {}
   for (const [k, v] of Object.entries(filter.value)) if (v && k !== 'unassigned') params[k] = v
+  if (scopeIds.value.length) params.account_ids = scopeIds.value
   window.open(exportUrl(params), '_blank')
 }
 </script>
@@ -244,6 +269,14 @@ function doExport() {
         <button class="primary" @click="saveManual">Speichern</button>
       </div>
     </div>
+
+    <!-- Aus dem Dashboard übernommener Bereich: sichtbar und abwählbar, sonst
+         wäre nicht erklärbar, warum die Liste weniger zeigt als "Alle Konten" -->
+    <p v-if="scopeIds.length" class="hint" style="margin: 0 0 .5rem">
+      Bereich aus dem Dashboard:
+      <strong>{{ scopeNames.join(', ') || `${scopeIds.length} Konten` }}</strong>
+      <button class="btn" style="margin-left: .5rem" @click="clearScope">Bereich aufheben ✕</button>
+    </p>
 
     <div class="chips">
       <select v-model="filter.account_id">

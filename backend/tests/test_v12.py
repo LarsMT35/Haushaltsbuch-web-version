@@ -172,7 +172,7 @@ def test_deposits_transparency(client, auth_headers):
     _tx(client, h, gemeinsam["id"], "2026-05-10", "-40.00", "Supermarkt")  # Ausgabe, zählt nicht
 
     r = client.get("/api/v1/dashboard/deposits", headers=h, params={
-        "account_id": gemeinsam["id"], "date_from": "2026-05-01", "date_to": "2026-06-30"})
+        "account_ids": [gemeinsam["id"]], "date_from": "2026-05-01", "date_to": "2026-06-30"})
     body = r.json()
     assert set(body["depositors"]) == {"Person A", "Person B"}
     may = next(s for s in body["series"] if s["month"] == "2026-05")

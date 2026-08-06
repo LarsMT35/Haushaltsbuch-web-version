@@ -240,6 +240,33 @@ automatisch aus.
   Zuvor tauchten Budgets in jedem Bereich auf und zwei Budgets derselben
   Kategorie verdrängten sich gegenseitig – mit sichtbar falschen Zahlen.
 
+### v1.7 – Klickbare Diagramme, schnellere Auswertungen, CI
+
+- ✅ **Vom Diagramm in die Buchungsliste**: Ein Klick auf einen Balken, ein
+  Kreissegment oder einen Punkt öffnet genau die Buchungen dahinter –
+  *Ausgaben nach Kategorie* (Kategorie), *Einnahmen/Ausgaben im Verlauf* und
+  *Bewegung der Sparkonten* (Abrechnungsmonat), *Kategorie-Trend* (beides),
+  *Einzahlungen pro Person* (Einzahler + Monat). Der angezeigte Bereich
+  (*Gemeinsam/Persönlich* samt Kontenfilter) wandert mit und ist in der Liste
+  als abwählbarer Hinweis sichtbar – sonst zeigte die Liste mehr Buchungen an,
+  als die angeklickte Zahl umfasst. Die Monatsgrenzen rechnet weiterhin das
+  Backend aus, damit die Abrechnungsmonat-Regel nicht ein zweites Mal in
+  JavaScript existiert.
+- ✅ **Dashboard lädt mit deutlich weniger Datenbankabfragen**: Die Salden
+  wurden je Konto einzeln in Python summiert und die Splitbuchungen je Buchung
+  einzeln nachgeladen. Beides erledigt jetzt die Datenbank in einem Rutsch
+  (`SUM ... GROUP BY` bzw. `selectinload`). Ein vollständiger Dashboard-Aufbau
+  über alle Auswertungen brauchte auf den Demodaten **577 SELECTs, jetzt 39** –
+  und der alte Wert wuchs mit jeder weiteren Buchung, der neue nicht.
+- ✅ **Einzahlungen über mehrere gemeinsame Konten**: `/dashboard/deposits`
+  nimmt wie alle übrigen Dashboard-Endpunkte mehrere Konten entgegen
+  („Alle gemeinsamen Konten" in der Kachel); Einzahlungen einer Person zählen
+  dann kontoübergreifend zusammen.
+- ✅ **CI-Pipeline** (`.github/workflows/ci.yml`): Jeder Push und Pull Request
+  prüft Backend-Tests (pytest), den Frontend-Build und dass die
+  Alembic-Migrationen auf einer leeren Datenbank durchlaufen – Letzteres fiel
+  sonst erst beim Deployment auf.
+
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).
 

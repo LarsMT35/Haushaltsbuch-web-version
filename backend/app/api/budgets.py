@@ -15,7 +15,8 @@ from ..db import get_db
 from ..deps import accessible_account_ids, get_current_user, require_account_access, require_admin
 from ..models import Account, AppSetting, Budget, Category, Transaction, User
 from ..schemas import (BudgetCreate, BudgetOut, BudgetStatusOut, BudgetStatusRow,
-                       BudgetThresholds, PeriodSettingIn, PeriodSettingOut)
+                       BudgetThresholds, PeriodBoundsOut, PeriodSettingIn,
+                       PeriodSettingOut)
 from ..services.audit import log
 from ..services.periods import (SETTING_KEY as PERIOD_KEY, current_period,
                                 effective_period, get_start_day, normalize_start_day,
@@ -189,6 +190,23 @@ def _period_out(day: int) -> PeriodSettingOut:
 def get_period_setting(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Starttag des Abrechnungsmonats. 1 = Kalendermonat."""
     return _period_out(get_start_day(db))
+
+
+@router.get("/period/bounds", response_model=PeriodBoundsOut)
+def get_period_bounds(month: str, db: Session = Depends(get_db),
+                      user: User = Depends(get_current_user)):
+    """Erster und letzter Tag eines Abrechnungsmonats ("YYYY-MM").
+
+    Klickt man im Dashboard auf einen Monat, muss daraus ein Datumsbereich für
+    die Buchungsliste werden. Die Umrechnung bleibt bewusst im Backend, damit
+    die Periodenregel nicht ein zweites Mal in JavaScript existiert (Prinzip 6).
+    """
+    try:
+        first, last = period_bounds(month, get_start_day(db))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Monat muss das Format YYYY-MM haben.")
+    return PeriodBoundsOut(month=month, date_from=first, date_to=last)
 
 
 @router.put("/period", response_model=PeriodSettingOut)
