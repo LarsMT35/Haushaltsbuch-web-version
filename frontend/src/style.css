@@ -105,7 +105,29 @@ a { color: var(--accent); text-decoration: none; }
 .tile {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 12px; padding: 1rem; min-width: 0;
+  /* Spalte, damit das Diagramm die frei eingestellte Kachelhöhe ausfüllt.
+     Die eingestellte Höhe wirkt als min-height (siehe tileProps), deshalb
+     kann der Inhalt nie abgeschnitten werden. */
+  display: flex; flex-direction: column;
 }
+/* Zeichenfläche nimmt den Rest der Kachel. Die Mindesthöhe verhindert, dass
+   die Legende beim Kleinziehen die komplette Fläche belegt oder abschneidet. */
+.tile .chart-wrap { position: relative; flex: 1 1 auto; min-height: 150px; }
+/* Tabellen/Listen in der Kachel scrollen, statt sie zu sprengen */
+.tile > table, .tile > div[style*="overflow-x"] { overflow: auto; }
+.tile .tile-scroll { flex: 1 1 auto; overflow: auto; min-height: 0; }
+
+/* Größe frei ziehbar (4.9.1) – Breite rastet auf Spalten, Höhe ist stufenlos */
+.tile-resize {
+  position: absolute; right: 2px; bottom: 2px; width: 16px; height: 16px;
+  cursor: nwse-resize; opacity: 0; transition: opacity .15s;
+  background: linear-gradient(135deg, transparent 50%, var(--muted) 50%, var(--muted) 60%,
+              transparent 60%, transparent 75%, var(--muted) 75%, var(--muted) 85%, transparent 85%);
+  border-bottom-right-radius: 10px;
+}
+.tile:hover .tile-resize { opacity: .65; }
+.tile-resize:hover { opacity: 1 !important; }
+.tile.resizing { user-select: none; outline: 2px dashed var(--accent); outline-offset: -2px; }
 /* Breite Kacheln über die ganze Reihe statt über zwei Spalten: bei ungerader
    Spaltenzahl (z.B. 3 auf 1440px, 5 auf 1920px) blieb sonst je Reihe eine
    Spalte ungenutzt, während die Diagramme darin gequetscht wurden. */

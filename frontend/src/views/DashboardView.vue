@@ -155,6 +155,22 @@ function categoryLabel() {
 
 // ------------------------------------------------------------ Kachel-Layout
 // Kachel-Registry: eine neue Auswertung ist ein neuer Eintrag, kein Layout-Umbau (4.9.1)
+// Standardbreite je Kachel in Rasterspalten (0 = volle Reihe). Frei
+// überschreibbar, sobald der Nutzer die Kachel selbst zieht.
+const FULL_WIDTH = new Set([
+  'kpis', 'cumulative', 'budget_progress', 'fixed_base', 'cashflow', 'by_category',
+  'category_trend', 'savings', 'networth', 'savings_rate', 'year_comparison',
+  'recurring_ampel', 'deposits',
+])
+// Nur Kacheln mit Diagramm brauchen eine Standardhöhe – Tabellen und
+// Kennzahlen sollen sich sonst nach ihrem Inhalt richten, statt Leerraum
+// zu erzeugen.
+const CHART_TILES = new Set([
+  'cumulative', 'fixed_base', 'cashflow', 'by_category', 'fixed',
+  'category_trend', 'savings', 'networth', 'savings_rate', 'deposits',
+])
+const DEFAULT_HEIGHT = 320
+
 const TILES = [
   ['kpis', 'Kennzahlen'], ['unassigned', 'Handlungsbedarf'],
   ['cumulative', 'Monatsverlauf kumuliert'],
@@ -182,18 +198,21 @@ const HIDDEN_BY_MODE = {
 const layout = ref([])
 const dragId = ref(null)
 
-function defaultLayout() {
+function blankTile(id) {
   const hidden = HIDDEN_BY_MODE[mode.value] || []
-  return TILES.map(([id]) => ({ id, visible: !hidden.includes(id) }))
+  return { id, visible: !hidden.includes(id), w: 0, h: 0 }
+}
+function defaultLayout() {
+  return TILES.map(([id]) => blankTile(id))
 }
 function normalizeLayout(stored) {
   // gespeicherte Reihenfolge übernehmen, neue Kacheltypen hinten anfügen
   const known = new Set(TILES.map(([id]) => id))
   const result = (stored || []).filter((t) => known.has(t.id))
+    .map((t) => ({ w: 0, h: 0, ...t }))   // Layouts ohne Größenangabe bleiben gültig
   if (!result.length) return defaultLayout()
-  const hidden = HIDDEN_BY_MODE[mode.value] || []
   for (const [id] of TILES) {
-    if (!result.find((t) => t.id === id)) result.push({ id, visible: !hidden.includes(id) })
+    if (!result.find((t) => t.id === id)) result.push(blankTile(id))
   }
   return result
 }
@@ -228,14 +247,70 @@ function onDrop(targetId) {
   dragId.value = null
   saveLayout()
 }
+const tileOf = (id) => layout.value.find((t) => t.id === id)
+
 function tileProps(id) {
+  const t = tileOf(id) || {}
+  const style = { order: orderOf(id) }
+  // 0 = Standard für diesen Kacheltyp, sonst die selbst gezogene Größe
+  style.gridColumn = t.w ? `span ${t.w}` : (FULL_WIDTH.has(id) ? '1 / -1' : 'span 1')
+  // MINDESThöhe statt fester Höhe: die Zeichenfläche füllt den Rest aus, aber
+  // wenn Überschrift und Hinweistexte bei schmaler Kachel auf mehr Zeilen
+  // umbrechen, wächst die Kachel mit, statt den Inhalt abzuschneiden.
+  const defaultHeight = CHART_TILES.has(id) ? DEFAULT_HEIGHT : 0
+  const minHeight = t.h || defaultHeight
+  if (minHeight) style.minHeight = `${minHeight}px`
   return {
-    style: { order: orderOf(id) },
-    draggable: true,
+    class: resizingId.value === id ? 'resizing' : '',
+    style,
+    draggable: resizingId.value === null,
     onDragstart: () => { dragId.value = id },
     onDragover: (e) => e.preventDefault(),
     onDrop: () => onDrop(id),
   }
+}
+
+// ------------------------------------------------------- Größe ziehen (4.9.1)
+// Breite rastet auf die Rasterspalten ein, damit keine Lücken entstehen;
+// die Höhe ist stufenlos, aber nach unten begrenzt, damit Diagrammlegenden
+// nicht die ganze Fläche belegen.
+const MIN_TILE_HEIGHT = 140
+const resizingId = ref(null)
+
+function startResize(event, id) {
+  event.preventDefault()
+  event.stopPropagation()
+  const tileEl = event.target.closest('.tile')
+  const gridEl = tileEl.parentElement
+  const cols = getComputedStyle(gridEl).gridTemplateColumns.split(' ').length
+  const gap = parseFloat(getComputedStyle(gridEl).gap) || 16
+  const colWidth = (gridEl.clientWidth - gap * (cols - 1)) / cols
+  const left = tileEl.getBoundingClientRect().left
+  const top = tileEl.getBoundingClientRect().top
+  const entry = tileOf(id)
+  resizingId.value = id
+
+  const onMove = (e) => {
+    const spans = Math.round((e.clientX - left + gap) / (colWidth + gap))
+    entry.w = Math.min(cols, Math.max(1, spans))
+    entry.h = Math.max(MIN_TILE_HEIGHT, Math.round(e.clientY - top))
+  }
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    resizingId.value = null
+    saveLayout()
+  }
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp)
+}
+
+function resetSize(id) {
+  const t = tileOf(id)
+  if (!t) return
+  t.w = 0
+  t.h = 0
+  saveLayout()
 }
 
 // ------------------------------------------------------------------- Laden
@@ -452,6 +527,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
            Veränderung gegenüber dem Vergleichszeitraum davor -->
       <div v-if="isVisible('kpis')" class="tile wide" v-bind="tileProps('kpis')">
         <button class="tile-close" @click="hide('kpis')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'kpis')"
+                @dblclick="resetSize('kpis')"></button>
         <h3>Kennzahlen <span class="hint">{{ summary.date_from }} – {{ summary.date_to }}</span></h3>
         <div class="kpi-row">
           <div>
@@ -483,6 +561,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <!-- Handlungsbedarf wird nicht versteckt (4.9.1) -->
       <div v-if="isVisible('unassigned') && summary.unassigned_count > 0" class="tile warn" v-bind="tileProps('unassigned')">
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'unassigned')"
+                @dblclick="resetSize('unassigned')"></button>
         <h3>⚠ Handlungsbedarf</h3>
         <p><strong>{{ summary.unassigned_count }}</strong> Buchungen ohne Kategorie.</p>
         <router-link class="btn" :to="{ path: '/buchungen', query: { unassigned: 1 } }">Jetzt zuordnen</router-link>
@@ -491,6 +572,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       <!-- Kumulierter Monatsverlauf: gegensteuern, solange der Monat läuft -->
       <div v-if="isVisible('cumulative') && cumulative" class="tile wide" v-bind="tileProps('cumulative')">
         <button class="tile-close" @click="hide('cumulative')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'cumulative')"
+                @dblclick="resetSize('cumulative')"></button>
         <h3>Ausgaben kumuliert – {{ cumulative.month }} gegen {{ cumulative.previous_month }}
           <span class="hint">{{ fmtDate(cumulative.date_from) }} – {{ fmtDate(cumulative.date_to) }}</span></h3>
         <ChartCanvas type="line" :labels="cumulative.days"
@@ -508,7 +592,11 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       <!-- Budget-Fortschritt: die handlungsrelevanteste Ansicht überhaupt (4.8) -->
       <div v-if="isVisible('budget_progress') && budgetStatus" class="tile wide" v-bind="tileProps('budget_progress')">
         <button class="tile-close" @click="hide('budget_progress')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'budget_progress')"
+                @dblclick="resetSize('budget_progress')"></button>
         <h3>Budget-Fortschritt <span class="hint">{{ budgetStatus.month }}</span></h3>
+        <div class="tile-scroll">
         <table v-if="budgetStatus.rows.length">
           <tbody>
             <tr v-for="row in budgetStatus.rows" :key="row.budget_id">
@@ -531,11 +619,15 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         </table>
         <p v-else class="hint">Noch keine Budgets angelegt.
           <router-link to="/budgets">Jetzt anlegen</router-link></p>
+        </div>
       </div>
 
       <!-- Fixkosten-Sockel: wie viel vom Einkommen ist frei verfügbar? -->
       <div v-if="isVisible('fixed_base') && fixedBase" class="tile wide" v-bind="tileProps('fixed_base')">
         <button class="tile-close" @click="hide('fixed_base')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'fixed_base')"
+                @dblclick="resetSize('fixed_base')"></button>
         <h3>Fixkosten-Sockel</h3>
         <p v-if="fixedBase.income">
           Von <strong>{{ fmtAmount(fixedBase.income) }}</strong> Einnahmen sind
@@ -557,9 +649,13 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       <!-- Fälligkeiten: Liquiditätsblick nach vorn statt nur zurück (4.7 b) -->
       <div v-if="isVisible('upcoming')" class="tile" v-bind="tileProps('upcoming')">
         <button class="tile-close" @click="hide('upcoming')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'upcoming')"
+                @dblclick="resetSize('upcoming')"></button>
         <h3>Fällig in den nächsten 30 Tagen</h3>
         <template v-if="upcoming.rows.length">
           <div class="big">{{ fmtAmount(upcoming.total) }}</div>
+          <div class="tile-scroll">
           <table>
             <tbody>
               <tr v-for="row in upcoming.rows.slice(0, 8)" :key="row.id">
@@ -569,6 +665,7 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
               </tr>
             </tbody>
           </table>
+          </div>
         </template>
         <p v-else class="hint">Keine wiederkehrende Position mit Fälligkeit in den nächsten 30 Tagen.</p>
       </div>
@@ -576,6 +673,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       <!-- Kategorie-Trend: WAS ist teurer geworden (Jahresvergleich ist zu grob) -->
       <div v-if="isVisible('category_trend') && categoryTrend" class="tile wide" v-bind="tileProps('category_trend')">
         <button class="tile-close" @click="hide('category_trend')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'category_trend')"
+                @dblclick="resetSize('category_trend')"></button>
         <h3>Kategorie-Trend <span class="hint">größte Ausgabenkategorien, letzte {{ TREND_MONTHS }} Monate</span></h3>
         <ChartCanvas v-if="categoryTrend.rows.length" type="line" :labels="categoryTrend.months"
           :datasets="categoryTrend.rows.map((r, i) => ({ label: r.category_name, data: r.values,
@@ -586,7 +686,11 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       <!-- Top-Empfänger: wohin das Geld jenseits der Kategorie fließt -->
       <div v-if="isVisible('top_counterparties') && topCounterparties" class="tile" v-bind="tileProps('top_counterparties')">
         <button class="tile-close" @click="hide('top_counterparties')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'top_counterparties')"
+                @dblclick="resetSize('top_counterparties')"></button>
         <h3>Top-Empfänger im Zeitraum</h3>
+        <div class="tile-scroll">
         <table v-if="topCounterparties.rows.length">
           <tbody>
             <tr v-for="row in topCounterparties.rows" :key="row.counterparty">
@@ -596,10 +700,14 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
           </tbody>
         </table>
         <p v-else class="hint">Keine Ausgaben im gewählten Zeitraum.</p>
+        </div>
       </div>
 
       <div v-if="isVisible('cashflow') && cashflow" class="tile wide" v-bind="tileProps('cashflow')">
         <button class="tile-close" @click="hide('cashflow')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'cashflow')"
+                @dblclick="resetSize('cashflow')"></button>
         <h3>Einnahmen / Ausgaben im Verlauf <span class="hint">letzte {{ TREND_MONTHS }} Monate</span></h3>
         <ChartCanvas type="bar" :labels="cashflow.months"
           :datasets="[
@@ -612,6 +720,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <div v-if="isVisible('by_category')" class="tile wide" v-bind="tileProps('by_category')">
         <button class="tile-close" @click="hide('by_category')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'by_category')"
+                @dblclick="resetSize('by_category')"></button>
         <h3>Ausgaben nach Kategorie</h3>
         <ChartCanvas v-if="topCategories.length" type="bar"
           :labels="topCategories.map((c) => c.category_name)"
@@ -622,6 +733,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <div v-if="isVisible('fixed')" class="tile" v-bind="tileProps('fixed')">
         <button class="tile-close" @click="hide('fixed')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'fixed')"
+                @dblclick="resetSize('fixed')"></button>
         <h3>Ausgaben: fix vs. variabel</h3>
         <ChartCanvas type="bar"
           :labels="['Ausgaben']"
@@ -639,6 +753,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <div v-if="isVisible('savings') && trend" class="tile wide" v-bind="tileProps('savings')">
         <button class="tile-close" @click="hide('savings')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'savings')"
+                @dblclick="resetSize('savings')"></button>
         <h3>Monatliche Bewegung der Sparkonten <span class="hint">letzte {{ TREND_MONTHS }} Monate</span></h3>
         <ChartCanvas type="bar"
           :labels="trend.savings_movement.map((m) => m.month)"
@@ -648,6 +765,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <div v-if="isVisible('networth') && networth" class="tile wide" v-bind="tileProps('networth')">
         <button class="tile-close" @click="hide('networth')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'networth')"
+                @dblclick="resetSize('networth')"></button>
         <h3>Vermögensverlauf (Monatsende) <span class="hint">letzte {{ TREND_MONTHS }} Monate</span></h3>
         <ChartCanvas type="line"
           :labels="networth.months"
@@ -660,6 +780,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <div v-if="isVisible('savings_rate') && savingsRate" class="tile wide" v-bind="tileProps('savings_rate')">
         <button class="tile-close" @click="hide('savings_rate')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'savings_rate')"
+                @dblclick="resetSize('savings_rate')"></button>
         <h3>Sparquote <span class="hint">letzte {{ TREND_MONTHS }} Monate</span></h3>
         <ChartCanvas type="bar"
           :labels="savingsRate.months"
@@ -680,8 +803,11 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
 
       <div v-if="isVisible('year_comparison') && yearComp" class="tile wide" v-bind="tileProps('year_comparison')">
         <button class="tile-close" @click="hide('year_comparison')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'year_comparison')"
+                @dblclick="resetSize('year_comparison')"></button>
         <h3>Jahresvergleich – Ausgaben pro Kategorie</h3>
-        <div style="overflow-x: auto">
+        <div class="tile-scroll" style="overflow-x: auto">
           <table>
             <thead><tr><th>Kategorie</th><th v-for="y in yearComp.years" :key="y" class="num">{{ y }}</th></tr></thead>
             <tbody>
@@ -697,7 +823,11 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       <!-- v1.2: Ampel-Übersicht wiederkehrende Kostenpositionen (4.7 b, 4.9) -->
       <div v-if="isVisible('recurring_ampel') && recurringStatus" class="tile wide" v-bind="tileProps('recurring_ampel')">
         <button class="tile-close" @click="hide('recurring_ampel')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'recurring_ampel')"
+                @dblclick="resetSize('recurring_ampel')"></button>
         <h3>Wiederkehrende Kosten – Soll/Ist</h3>
+        <div class="tile-scroll">
         <table v-if="recurringStatus.length">
           <tbody>
             <tr v-for="row in recurringStatus.slice(0, 8)" :key="row.id">
@@ -710,12 +840,16 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         </table>
         <p v-else class="hint">Noch keine wiederkehrenden Positionen angelegt.
           <router-link to="/wiederkehrend">Jetzt anlegen</router-link></p>
+        </div>
         <router-link class="btn" style="margin-top: .5rem; display: inline-block" to="/wiederkehrend">Details →</router-link>
       </div>
 
       <!-- v1.2: Einzahlungstransparenz gemeinsames Konto (4.9) -->
       <div v-if="isVisible('deposits')" class="tile wide" v-bind="tileProps('deposits')">
         <button class="tile-close" @click="hide('deposits')">✕</button>
+        <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
+                @pointerdown="startResize($event, 'deposits')"
+                @dblclick="resetSize('deposits')"></button>
         <h3>Einzahlungen pro Person (gemeinsames Konto)</h3>
         <div v-if="householdAccounts.length">
           <select v-model="depositAccountId" style="margin-bottom: .5rem">

@@ -131,4 +131,5 @@ def test_dashboard_layout(client, auth_headers):
     r = client.put("/api/v1/dashboard/layout", headers=h, json={"tiles": tiles})
     assert r.status_code == 200
     r = client.get("/api/v1/dashboard/layout", headers=h)
-    assert r.json()["tiles"] == tiles
+    # Größenangaben (w/h) kommen mit Standardwerten hinzu, hier nicht relevant
+    assert [{"id": t["id"], "visible": t["visible"]} for t in r.json()["tiles"]] == tiles

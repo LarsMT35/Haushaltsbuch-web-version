@@ -512,8 +512,16 @@ class YearComparisonOut(BaseModel):
 
 
 class LayoutTile(BaseModel):
+    """Kachel im Dashboard-Layout (4.9.1).
+
+    `w` = Breite in Rasterspalten, `h` = Höhe in Pixeln. 0 heißt „Standard für
+    diesen Kacheltyp" – so bleiben bestehende Layouts ohne Größenangabe gültig.
+    """
+
     id: str
     visible: bool = True
+    w: int = 0
+    h: int = 0
 
 
 class LayoutOut(BaseModel):

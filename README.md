@@ -114,8 +114,12 @@ automatisch aus.
 - ✅ **Tags** als zweite Dimension (frei vergebbar, Filter in der Buchungsliste)
 - ✅ **Budgets mit Ampel**: monatlich je Kategorie, ab Gültigkeitsdatum
   versioniert, Schwellwerte konfigurierbar, Ampelfarben schema-unabhängig
-- ✅ **Kachel-Dashboard**: Kacheln per Drag & Drop anordnen, aus-/einblenden –
-  Layout wird pro Nutzer gespeichert
+- ✅ **Kachel-Dashboard**: Kacheln per Drag & Drop anordnen, aus-/einblenden und
+  am Griff unten rechts **frei in der Größe ziehen** (Breite rastet auf die
+  Rasterspalten, Höhe stufenlos; Doppelklick setzt zurück). Diagramme folgen
+  der Kachelgröße; wird sie kleiner als der Inhalt, wächst die Kachel mit,
+  statt Legende oder Text abzuschneiden. Layout wird pro Nutzer und Bereich
+  gespeichert.
 - ✅ **Erweiterte Dashboards**: Vermögensverlauf pro Konto, Sparquote im
   Zeitverlauf (**tatsächlicher Netto-Zufluss auf die Sparkonten** inkl. aller
   Umbuchungen in beide Richtungen – 200 € aufs Tagesgeld und 50 € zurück

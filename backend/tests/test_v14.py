@@ -51,6 +51,12 @@ def test_dashboard_scopes_balance_to_selected_accounts(client, auth_headers):
     assert both["balance_total"] == 5000.0
 
 
+def _core(tiles):
+    """Nur Kachel-ID und Sichtbarkeit vergleichen – Größenangaben kommen mit
+    Standardwerten hinzu und sind nicht Gegenstand dieser Tests."""
+    return [{"id": t["id"], "visible": t["visible"]} for t in tiles]
+
+
 def _reset_layout():
     """Die Test-DB ist sessionweit geteilt – andere Tests hinterlassen dort
     bereits ein Layout. Für definierte Ausgangslage vorher entfernen."""
@@ -77,10 +83,10 @@ def test_dashboard_layout_per_mode(client, auth_headers):
     assert client.put("/api/v1/dashboard/layout", headers=h, params={"mode": "persoenlich"},
                       json={"tiles": persoenlich}).status_code == 200
 
-    assert client.get("/api/v1/dashboard/layout", headers=h,
-                      params={"mode": "gemeinsam"}).json()["tiles"] == gemeinsam
-    assert client.get("/api/v1/dashboard/layout", headers=h,
-                      params={"mode": "persoenlich"}).json()["tiles"] == persoenlich
+    assert _core(client.get("/api/v1/dashboard/layout", headers=h,
+                            params={"mode": "gemeinsam"}).json()["tiles"]) == gemeinsam
+    assert _core(client.get("/api/v1/dashboard/layout", headers=h,
+                            params={"mode": "persoenlich"}).json()["tiles"]) == persoenlich
     # unbeschriebener Modus liefert leer -> Frontend nimmt sein Standardlayout
     assert client.get("/api/v1/dashboard/layout", headers=h,
                       params={"mode": "gesamt"}).json()["tiles"] == []
@@ -107,14 +113,14 @@ def test_dashboard_layout_legacy_format_survives(client, auth_headers):
         db.commit()
 
     for m in ("gemeinsam", "persoenlich", "gesamt"):
-        assert client.get("/api/v1/dashboard/layout", headers=h,
-                          params={"mode": m}).json()["tiles"] == legacy
+        assert _core(client.get("/api/v1/dashboard/layout", headers=h,
+                                params={"mode": m}).json()["tiles"]) == legacy
 
     # erstes Speichern überführt es ins Modus-Format, ohne die anderen zu leeren
     client.put("/api/v1/dashboard/layout", headers=h, params={"mode": "gemeinsam"},
                json={"tiles": [{"id": "kpis", "visible": True}]})
-    assert client.get("/api/v1/dashboard/layout", headers=h,
-                      params={"mode": "persoenlich"}).json()["tiles"] == legacy
+    assert _core(client.get("/api/v1/dashboard/layout", headers=h,
+                            params={"mode": "persoenlich"}).json()["tiles"]) == legacy
 
 
 def test_partner_sees_only_household_accounts(client, auth_headers):
@@ -150,3 +156,35 @@ def test_partner_sees_only_household_accounts(client, auth_headers):
     s = client.get("/api/v1/dashboard/summary", headers=ph,
                    params={"account_ids": [privat["id"]]}).json()
     assert privat["name"] not in [a["name"] for a in s["accounts"]]
+
+
+def test_dashboard_layout_keeps_tile_sizes(client, auth_headers):
+    """Kachelgrößen (Breite in Rasterspalten, Höhe in Pixeln) müssen die
+    Speicherung überstehen – sonst wäre jede gezogene Größe nach dem
+    Neuladen wieder weg."""
+    h = auth_headers
+    _reset_layout()
+    tiles = [
+        {"id": "kpis", "visible": True, "w": 2, "h": 260},
+        {"id": "cashflow", "visible": True, "w": 4, "h": 520},
+        {"id": "networth", "visible": False},          # ohne Größenangabe
+    ]
+    r = client.put("/api/v1/dashboard/layout", headers=h,
+                   params={"mode": "gesamt"}, json={"tiles": tiles})
+    assert r.status_code == 200
+
+    stored = client.get("/api/v1/dashboard/layout", headers=h,
+                        params={"mode": "gesamt"}).json()["tiles"]
+    by_id = {t["id"]: t for t in stored}
+    assert (by_id["kpis"]["w"], by_id["kpis"]["h"]) == (2, 260)
+    assert (by_id["cashflow"]["w"], by_id["cashflow"]["h"]) == (4, 520)
+    # ohne Angabe bleibt 0 = "Standard für diesen Kacheltyp"
+    assert (by_id["networth"]["w"], by_id["networth"]["h"]) == (0, 0)
+
+    # Layouts aus der Zeit vor den Größen bleiben gültig
+    legacy = [{"id": "kpis", "visible": True}]
+    client.put("/api/v1/dashboard/layout", headers=h,
+               params={"mode": "persoenlich"}, json={"tiles": legacy})
+    back = client.get("/api/v1/dashboard/layout", headers=h,
+                      params={"mode": "persoenlich"}).json()["tiles"]
+    assert back == [{"id": "kpis", "visible": True, "w": 0, "h": 0}]

@@ -78,7 +78,9 @@ eigene Datenbank, ein eigenes Volume und einen eigenen Compose-Projektnamen.
 ## Kurzer Rundgang zum Vorführen
 
 1. **Startseite** – oben zwischen *Gemeinsam / Persönlich / Gesamt* wechseln;
-   jeder Bereich hat eigene Kacheln und ein eigenes Layout.
+   jeder Bereich hat eigene Kacheln und ein eigenes Layout. Kacheln lassen
+   sich am Griff unten rechts in der Größe ziehen (Doppelklick = zurücksetzen),
+   die Diagramme passen sich mit an.
 2. **Handlungsbedarf** – vier unzugeordnete Buchungen, „Jetzt zuordnen".
 3. **Umbuchungen erkennen** (Buchungen) – legt die fehlende Depot-Gegenbuchung
    an; Depot-Saldo und Sparquote des Monats steigen sichtbar.
