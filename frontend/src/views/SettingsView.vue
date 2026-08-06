@@ -1,6 +1,7 @@
 <script setup>
 import { inject, onMounted, ref } from 'vue'
 import { api, fmtAmount, fmtDate } from '../api.js'
+import TutorialSection from '../components/TutorialSection.vue'
 
 const user = inject('user')
 const settings = inject('settings')
@@ -296,5 +297,7 @@ async function changePassword() {
         </div>
       </div>
     </div>
+
+    <TutorialSection />
   </div>
 </template>

@@ -29,6 +29,8 @@ function queryFilter() {
     date_to: q.date_to || '',
     text: q.text || '',
     tag: q.tag || '',
+    // Einnahme / Ausgabe / Umbuchung – gleiche Einteilung wie im Dashboard
+    direction: q.direction || '',
     unassigned: !!q.unassigned,
   }
 }
@@ -48,6 +50,26 @@ const scopeNames = computed(() => scopeIds.value
   .map((id) => accounts.value.find((a) => a.id === id)?.name)
   .filter(Boolean))
 function clearScope() { scopeIds.value = []; offset.value = 0; load() }
+
+// Zeitraum-Schnellwahl: die Grenzen des Abrechnungsmonats kommen aus dem
+// Backend, damit hier nicht eine zweite Periodenregel entsteht (Prinzip 6).
+const period = ref(null)
+
+function setRange(from, to) {
+  filter.value.date_from = from
+  filter.value.date_to = to
+}
+function thisPeriod() {
+  if (period.value) setRange(period.value.current_from, period.value.current_to)
+}
+function lastPeriod() {
+  if (period.value) setRange(period.value.previous_from, period.value.previous_to)
+}
+function thisYear() {
+  const y = new Date().getFullYear()
+  setRange(`${y}-01-01`, `${y}-12-31`)
+}
+function clearRange() { setRange('', '') }
 const allTags = ref([])
 
 // v1.1: Detailbereich je Buchung für Splits & Tags
@@ -131,6 +153,7 @@ async function load() {
 onMounted(async () => {
   categories.value = await api.get('/categories')
   allTags.value = await api.get('/transactions/tags')
+  period.value = await api.get('/budgets/period').catch(() => null)
   // schlägt fehl nie durch: ohne eingerichtete KI bleibt die Funktion aus
   aiStatus.value = await api.get('/ai/status').catch(() => null)
   await load()
@@ -287,6 +310,12 @@ function doExport() {
         <option value="">Alle Kategorien</option>
         <option v-for="c in categories" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
       </select>
+      <select v-model="filter.direction" title="Einnahmen, Ausgaben oder Umbuchungen">
+        <option value="">Ein- und Ausgaben</option>
+        <option value="income">Nur Einnahmen</option>
+        <option value="expense">Nur Ausgaben</option>
+        <option value="transfer">Nur Umbuchungen</option>
+      </select>
       <input type="date" v-model="filter.date_from" />
       <input type="date" v-model="filter.date_to" />
       <input v-model.lazy="filter.text" placeholder="Suche…" />
@@ -295,6 +324,18 @@ function doExport() {
         <option v-for="t in allTags" :key="t.id" :value="t.name">🏷 {{ t.name }}</option>
       </select>
       <label style="align-self: center"><input type="checkbox" v-model="filter.unassigned" /> nur ohne Kategorie</label>
+    </div>
+
+    <!-- Zeitraum-Schnellwahl: dieselben Grenzen wie auf der Startseite, damit
+         Kachel und Liste denselben Ausschnitt meinen -->
+    <div class="chips segmented" style="margin-bottom: .75rem">
+      <button type="button" @click="thisPeriod" :disabled="!period">Laufender Zeitraum</button>
+      <button type="button" @click="lastPeriod" :disabled="!period">Letzter Zeitraum</button>
+      <button type="button" @click="thisYear">Dieses Jahr</button>
+      <button type="button" @click="clearRange">Zeitraum aufheben</button>
+      <span v-if="period && period.start_day > 1" class="hint" style="align-self: center">
+        Abrechnungsmonat ab dem {{ period.start_day }}.
+      </span>
     </div>
 
     <p v-if="error" class="error">{{ error }}</p>

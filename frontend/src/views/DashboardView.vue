@@ -411,6 +411,9 @@ const kpi = computed(() => {
   return {
     income: s.income, expenses: s.expenses,
     balance: s.income - s.expenses, total: s.balance_total,
+    // Netto-Bewegung der Sparkonten im Zeitraum: bei einem Depot ist das die
+    // EINZIGE Zahl, die überhaupt etwas zeigt (alles andere ist Umbuchung).
+    savings: (s.savings_movement || []).reduce((sum, m) => sum + m.value, 0),
     incomeChange: change(s.income, p?.income, true),
     expensesChange: change(s.expenses, p?.expenses, false),
     balanceChange: change(s.income - s.expenses, p ? p.income - p.expenses : null, true),
@@ -616,6 +619,14 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
             <span v-if="kpi.balanceChange" :class="kpi.balanceChange.cls" style="font-size: .8rem">
               {{ kpi.balanceChange.text }}</span>
           </div>
+          <!-- Ohne diese Zahl sähe ein Depot- oder Tagesgeldkonto nach lauter
+               Nullen aus: sein gesamter Zufluss besteht aus Umbuchungen, und
+               die sind absichtlich weder Einnahme noch Ausgabe (4.9). -->
+          <div v-if="kpi.savings">
+            <span class="hint">Umbuchungen (Sparkonten)</span>
+            <div class="big" :class="kpi.savings >= 0 ? 'pos' : 'neg'">{{ fmtAmount(kpi.savings) }}</div>
+            <span class="hint" style="font-size: .8rem">zählt nicht als Einnahme</span>
+          </div>
           <div>
             <span class="hint">{{ mode === 'gemeinsam' ? 'Haushaltsvermögen' : 'Gesamtvermögen' }}</span>
             <div class="big">{{ fmtAmount(kpi.total) }}</div>
@@ -623,6 +634,13 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
           </div>
         </div>
         <p class="hint" style="margin: .4rem 0 0">Vergleich: gleich langer Zeitraum davor, ohne Umbuchungen.</p>
+        <p v-if="kpi.savings && !kpi.income && !kpi.expenses" class="hint" style="margin: .2rem 0 0">
+          Auf dieser Auswahl gab es nur Umbuchungen – Geld, das zwischen deinen eigenen Konten
+          bewegt wurde. Es taucht deshalb als Bewegung und im Vermögen auf, nicht als Einnahme.
+          <router-link :to="{ path: '/buchungen', query: { account_ids: scopedAccountIds(),
+                              date_from: filter.date_from, date_to: filter.date_to,
+                              direction: 'transfer' } }">Buchungen ansehen →</router-link>
+        </p>
       </div>
 
       <!-- Handlungsbedarf wird nicht versteckt (4.9.1) -->

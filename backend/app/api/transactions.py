@@ -6,7 +6,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -40,7 +40,7 @@ def _filtered_query(db: Session, user: User, *, account_id: int | None, category
                     date_from: date | None, date_to: date | None, text: str | None,
                     amount_min: float | None, amount_max: float | None,
                     unassigned: bool, include_transfers: bool, tag: str | None = None,
-                    account_ids: list[int] | None = None):
+                    account_ids: list[int] | None = None, direction: str | None = None):
     ids = accessible_account_ids(db, user)
     q = db.query(Transaction).filter(Transaction.account_id.in_(ids))
     if account_ids:
@@ -65,6 +65,33 @@ def _filtered_query(db: Session, user: User, *, account_id: int | None, category
         q = q.filter(Transaction.amount >= amount_min)
     if amount_max is not None:
         q = q.filter(Transaction.amount <= amount_max)
+    if direction in ("income", "expense", "transfer"):
+        # Bewusst dieselbe Einteilung wie im Dashboard (4.9): eine Umbuchung
+        # ist weder Einnahme noch Ausgabe – egal ob echte Gegenbuchung
+        # (transfer_id) oder Kategorie "wie Umbuchung behandeln". Sonst
+        # zeigte die gefilterte Liste andere Betraege als die Kachel daneben.
+        transfer_cat_ids = [cid for (cid,) in db.query(Category.id)
+                            .filter(Category.is_transfer_like.is_(True)).all()]
+        is_transfer = or_(
+            Transaction.transfer_id.isnot(None),
+            and_(Transaction.category_id.isnot(None),
+                 Transaction.category_id.in_(transfer_cat_ids)),
+        )
+        # Die Verneinung ausdruecklich hinschreiben statt ~is_transfer: fuer
+        # Buchungen OHNE Kategorie waere "category_id NOT IN (...)" in SQL
+        # weder wahr noch falsch, sondern NULL – unzugeordnete Buchungen
+        # verschwaenden damit aus Einnahmen UND Ausgaben.
+        is_not_transfer = and_(
+            Transaction.transfer_id.is_(None),
+            or_(Transaction.category_id.is_(None),
+                Transaction.category_id.notin_(transfer_cat_ids)),
+        )
+        if direction == "transfer":
+            q = q.filter(is_transfer)
+        elif direction == "income":
+            q = q.filter(is_not_transfer, Transaction.amount > 0)
+        else:
+            q = q.filter(is_not_transfer, Transaction.amount < 0)
     if unassigned:
         q = q.filter(Transaction.category_id.is_(None))
     if tag:
@@ -86,13 +113,14 @@ def list_transactions(account_id: int | None = None, category_id: int | None = N
                       text: str | None = None, amount_min: float | None = None,
                       amount_max: float | None = None, unassigned: bool = False,
                       tag: str | None = None, account_ids: list[int] | None = Query(None),
+                      direction: str | None = Query(None, pattern="^(income|expense|transfer)$"),
                       limit: int = Query(100, le=500), offset: int = 0,
                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     q = _filtered_query(db, user, account_id=account_id, category_id=category_id,
                         date_from=date_from, date_to=date_to, text=text,
                         amount_min=amount_min, amount_max=amount_max,
                         unassigned=unassigned, include_transfers=True, tag=tag,
-                        account_ids=account_ids)
+                        account_ids=account_ids, direction=direction)
     total = q.count()
     items = (q.order_by(Transaction.booking_date.desc(), Transaction.id.desc())
              .offset(offset).limit(limit).all())
@@ -251,12 +279,13 @@ def list_tags(db: Session = Depends(get_db), user: User = Depends(get_current_us
 def export_csv(account_id: int | None = None, category_id: int | None = None,
                date_from: date | None = None, date_to: date | None = None,
                text: str | None = None, account_ids: list[int] | None = Query(None),
+               direction: str | None = Query(None, pattern="^(income|expense|transfer)$"),
                user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """CSV-Export (4.11) – Datenhoheit: Daten kommen auch wieder heraus."""
     q = _filtered_query(db, user, account_id=account_id, category_id=category_id,
                         date_from=date_from, date_to=date_to, text=text,
                         amount_min=None, amount_max=None, unassigned=False,
-                        include_transfers=True, account_ids=account_ids)
+                        include_transfers=True, account_ids=account_ids, direction=direction)
     rows = q.order_by(Transaction.booking_date.asc()).all()
     categories = {c.id: c.name for c in db.query(Category).all()}
     buf = io.StringIO()

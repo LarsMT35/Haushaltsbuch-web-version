@@ -283,6 +283,26 @@ automatisch aus.
 - ✅ Unverändert gilt: Buchungsdatum, Betrag, Kontostand und der Saldo-Abgleich
   gegen die Bank rechnen immer mit dem echten Datum.
 
+### v1.7.2 – Umbuchungen sichtbar, Filter, Kurzanleitung
+
+- ✅ **Kennzahlen zeigen Umbuchungen getrennt aus.** Ein Depot oder Tagesgeld
+  bekommt sein Geld ausschließlich per Umbuchung – und die zählen bewusst
+  weder als Einnahme noch als Ausgabe (sonst wäre jeder Sparbetrag doppelt in
+  der Statistik). Die Kachel zeigte deshalb nur Nullen, obwohl Buchungen da
+  waren. Jetzt steht die Netto-Bewegung als eigene Zahl daneben, mit einem
+  Satz zur Erklärung und einem Link in die gefilterte Buchungsliste.
+- ✅ **Buchungsliste filtert nach Art**: *Nur Einnahmen / Nur Ausgaben / Nur
+  Umbuchungen* – mit **derselben** Einteilung wie das Dashboard, damit die
+  Summe der Liste zur Zahl in der Kachel passt. Dazu Zeitraum-Schnellwahl
+  (*Laufender / Letzter Zeitraum*, *Dieses Jahr*), die dem eingestellten
+  Abrechnungsmonat folgt.
+- ✅ **Kurzanleitung in den Einstellungen**: erklärt mit Skizzen den Ablauf
+  (Import → Regeln → Auswertung), die vier Diagrammtypen und die Konzepte
+  dahinter – Umbuchungen, Abrechnungsmonat, Bereichstrennung, Bedienung der
+  Kacheln. Die Bilder sind eingebettete SVG-Zeichnungen statt Screenshots:
+  sie übernehmen das Farbschema samt Dark Mode und veralten nicht bei jeder
+  Layoutänderung.
+
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).
 
