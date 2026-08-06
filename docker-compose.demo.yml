@@ -41,6 +41,10 @@ services:
       # Befüllt die leere DB beim allerersten Start mit Testkonten/-buchungen
       # (nur hier aktiv, siehe app/seed_demo.py)
       SEED_DEMO_DATA: "true"
+      # Optionale lokale KI auch im Demo-Stack vorführbar, leer = aus
+      OLLAMA_URL: ${OLLAMA_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1}
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-120}
     depends_on:
       db:
         condition: service_healthy

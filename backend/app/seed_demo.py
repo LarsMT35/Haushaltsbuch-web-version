@@ -32,6 +32,7 @@ from .models import (
     User,
 )
 from .security import hash_password
+from .services.recurring import auto_link_item
 from .services.transfers import auto_link_transfers, auto_mirror_category_transfers
 
 DEMO_GIRO_IBAN = "DE12500105170648489890"
@@ -165,6 +166,16 @@ def run(db: Session) -> None:
             add_tx(giro, d, -300.00, "Eigenes Tagesgeldkonto", "Sparen", iban=DEMO_TAGESGELD_IBAN)
             add_tx(tagesgeld, d, 300.00, "Eigenes Girokonto", "Sparen", iban=DEMO_GIRO_IBAN)
 
+        # In jedem zweiten Monat ein Teil zurück aufs Giro. Zeigt, dass die
+        # Sparquote (v1.5.2) netto rechnet: 300 hin, 80 zurück = 220 gespart.
+        if m % 2 == 0:
+            d = month_day(base_month, 24)
+            if d:
+                add_tx(tagesgeld, d, -80.00, "Eigenes Girokonto", "Rückbuchung",
+                      iban=DEMO_GIRO_IBAN)
+                add_tx(giro, d, 80.00, "Eigenes Tagesgeldkonto", "Rückbuchung",
+                      iban=DEMO_TAGESGELD_IBAN)
+
         # Bargeldabhebung Gegenseite (manuell, ohne IBAN -> landet als
         # Umbuchungs-Vorschlag zum manuellen Bestätigen, nicht automatisch)
         d = month_day(base_month, 18)
@@ -242,27 +253,70 @@ def run(db: Session) -> None:
 
     # Regeln, damit die Regeln-Ansicht nicht leer ist und die Fake-Import-CSV
     # gleich Kategorien vorschlägt
+    # Bewusst reichlich Regeln: die Freitextsuche in der Regelansicht (v1.5)
+    # zeigt ihren Nutzen erst, wenn die Liste nicht mehr auf einen Blick passt.
     rule_defs = [
         ("Aldi", lebensmittel), ("Rewe", lebensmittel), ("Edeka", lebensmittel), ("Lidl", lebensmittel),
-        ("dm-drogerie", drogerie), ("Rossmann", drogerie),
-        ("Netflix", abos), ("Spotify", abos),
-        ("Aral", auto), ("Shell", auto),
-        ("Telekom", internet), ("Allianz", versicherungen),
-        ("Lieferando", restaurant),
+        ("Penny", lebensmittel), ("Netto Marken", lebensmittel), ("Kaufland", lebensmittel),
+        ("Bäckerei", lebensmittel), ("Metzgerei", lebensmittel), ("Wochenmarkt", lebensmittel),
+        ("dm-drogerie", drogerie), ("Rossmann", drogerie), ("Müller Drogerie", drogerie),
+        ("Netflix", abos), ("Spotify", abos), ("Disney", abos), ("Zeitung", abos),
+        ("Aral", auto), ("Shell", auto), ("Esso", auto), ("Total Energies", auto),
+        ("Werkstatt", auto), ("TÜV", auto),
+        ("Telekom", internet), ("Vodafone", internet), ("1&1", internet),
+        ("Allianz", versicherungen), ("HUK", versicherungen), ("Debeka", versicherungen),
+        ("Lieferando", restaurant), ("Pizzeria", restaurant), ("Restaurant", restaurant),
+        ("Apotheke", gesundheit), ("Zahnarzt", gesundheit),
+        ("Deutsche Bahn", _cat(db, "ÖPNV & Bahn")), ("Stadtwerke", nebenkosten),
+        ("Fitnessstudio", freizeit), ("Kino", freizeit),
+        ("H&M", kleidung), ("Zalando", kleidung),
+        ("Saturn", elektronik), ("MediaMarkt", elektronik),
     ]
     for kw, cat in rule_defs:
         if cat and not db.query(Rule).filter(Rule.text_contains == kw).first():
             db.add(Rule(name=f"Demo: {kw}", category_id=cat.id, text_contains=kw))
 
-    if lebensmittel:
-        db.add(Budget(category_id=lebensmittel.id, amount=Decimal("400.00"), period="month", valid_from=start))
+    # Mehrere Budgets, damit die Budget-Fortschritt-Kachel (v1.5) alle drei
+    # Ampelfarben zeigt statt einer einzelnen Zeile.
+    budget_defs = [
+        (lebensmittel, "400.00"), (restaurant, "120.00"), (auto, "90.00"),
+        (drogerie, "40.00"), (freizeit, "80.00"),
+        # Abschlag liegt fest bei 95 -> zuverlässig über Budget, damit auch
+        # die rote Ampel vorkommt und nicht nur grün/gelb
+        (nebenkosten, "90.00"),
+    ]
+    for cat, amount in budget_defs:
+        if cat:
+            db.add(Budget(category_id=cat.id, amount=Decimal(amount), period="month",
+                          valid_from=start))
 
-    # Wiederkehrende Kostenposition (v1.2) – zum Live-Vorführen von
-    # "Erkennung ausführen" in der Wiederkehrend-Ansicht
-    if abos:
-        db.add(RecurringItem(name="Netflix", cycle_months=1, expected_amount=Decimal("12.99"),
-                             paying_account_id=giro.id, category_id=abos.id, match_text="Netflix"))
+    # Wiederkehrende Kostenpositionen (v1.2). Die meisten werden unten
+    # automatisch verknüpft, damit die Kachel "Fällig in den nächsten 30 Tagen"
+    # (v1.5) echte Fälligkeiten zeigt. Netflix bleibt bewusst unverknüpft,
+    # um "Erkennung ausführen" live vorführen zu können.
+    recurring_defs = [
+        ("Netflix", 1, "12.99", abos, "Netflix"),
+        ("Miete", 1, "780.00", miete, "Hausverwaltung"),
+        ("Strom/Gas Abschlag", 1, "95.00", nebenkosten, "Stadtwerke"),
+        ("Mobilfunk & Internet", 1, "34.99", internet, "Telekom"),
+        ("Haftpflicht/Hausrat", 1, "42.50", versicherungen, "Allianz"),
+    ]
+    recurring_items = {}
+    for name, cycle, amount, cat, match in recurring_defs:
+        if not cat:
+            continue
+        item = RecurringItem(name=name, cycle_months=cycle, expected_amount=Decimal(amount),
+                             paying_account_id=giro.id, category_id=cat.id, match_text=match)
+        db.add(item)
+        recurring_items[name] = item
 
+    db.commit()
+
+    # alle außer Netflix verknüpfen -> sie bekommen dadurch eine nächste
+    # Fälligkeit und tauchen in der Fälligkeiten-Kachel auf
+    for name, item in recurring_items.items():
+        if name != "Netflix":
+            auto_link_item(db, item)
     db.commit()
 
     # Umbuchungserkennung für die per IBAN eindeutigen Paare (Giro<->Tagesgeld);

@@ -21,17 +21,26 @@ realistischen ~6-Monats-Historie befüllt:
   Tanken, Restaurant, u.v.m.
 - Eine **automatisch erkannte Umbuchung** (Giro ↔ Tagesgeld, per IBAN) und
   eine **offene Umbuchungs-Vorschlag** (Bargeldabhebung) zum Live-Bestätigen
-- Ein **Split-Beispiel**, ein **Tag** ("Urlaub 2026"), ein **Budget**
-  (Lebensmittel), eine **wiederkehrende Kostenposition** (Netflix – bewusst
-  noch nicht verknüpft, zum Live-Vorführen von „Erkennung ausführen")
+- Ein **Split-Beispiel**, ein **Tag** ("Urlaub 2026")
+- **6 Budgets** über alle drei Ampelfarben verteilt (der Nebenkosten-Abschlag
+  liegt bewusst über Budget) – für die Kachel *Budget-Fortschritt*
+- **5 wiederkehrende Kostenpositionen**; vier davon verknüpft, damit die
+  Kachel *Fällig in den nächsten 30 Tagen* echte Termine zeigt. Netflix
+  bleibt bewusst unverknüpft, um „Erkennung ausführen" live vorzuführen.
 - Die Kategorie **„Kapitalerträge"** ist als **„wie Umbuchung behandeln"**
   markiert und hat das **Depot als Umbuchungs-Zielkonto** hinterlegt (v1.3b):
   Sparplan-Ausführungen bekommen automatisch eine Gegenbuchung im Depot,
   dessen Saldo dadurch tatsächlich mitwächst. Die jüngste Ausführung ist
   bewusst noch nicht gegengebucht – Button **„Umbuchungen erkennen"** in der
-  Buchungsliste klicken, um live zu sehen, wie sich der Depot-Saldo erhöht.
-- **13 Kategorisierungsregeln** und **4 unzugeordnete Buchungen** (zeigt die
-  „Handlungsbedarf"-Kachel)
+  Buchungsliste klicken, um live zu sehen, wie Depot-Saldo *und* Sparquote
+  des Monats nach oben springen.
+- **Monatliche Umbuchung aufs Tagesgeld (300 €), in jedem zweiten Monat 80 €
+  zurück aufs Giro** – zeigt, dass die Sparquote netto rechnet (v1.5.2) und
+  nicht jeden nicht ausgegebenen Euro als gespart zählt
+- **Über 40 Kategorisierungsregeln** – genug, damit die **Freitextsuche** in
+  der Regelansicht (v1.5) ihren Zweck zeigt: „Lebensmittel" findet alle
+  Supermarkt-Regeln, ohne dass man die Händlernamen kennt
+- **4 unzugeordnete Buchungen** (zeigt die „Handlungsbedarf"-Kachel)
 
 ## `beispiel_import_sparkasse.csv`
 
@@ -43,3 +52,30 @@ vorhandenen Regeln, Übernehmen).
 **Vorführen:** Import → Datei hierher ziehen → Profil „Sparkasse" wählen →
 Vorschau (Zielkonto wird automatisch erkannt, mehrere Zeilen bekommen schon
 eine Kategorie vorgeschlagen) → Übernehmen.
+
+## Demodaten erneuern
+
+Das Seed-Skript läuft **nur in eine leere Datenbank** und ist ansonsten
+idempotent – ein bestehender Demo-Stack bekommt neue Inhalte also nicht
+automatisch. Nach einem Update mit erweiterten Demodaten:
+
+```bash
+scripts/demo-down.sh --reset   # stoppt und löscht die Demo-Datenbank
+scripts/demo-up.sh             # baut neu und befüllt frisch
+```
+
+Die produktive Installation ist davon nicht berührt: der Demo-Stack hat eine
+eigene Datenbank, ein eigenes Volume und einen eigenen Compose-Projektnamen.
+
+## Kurzer Rundgang zum Vorführen
+
+1. **Startseite** – oben zwischen *Gemeinsam / Persönlich / Gesamt* wechseln;
+   jeder Bereich hat eigene Kacheln und ein eigenes Layout.
+2. **Handlungsbedarf** – vier unzugeordnete Buchungen, „Jetzt zuordnen".
+3. **Umbuchungen erkennen** (Buchungen) – legt die fehlende Depot-Gegenbuchung
+   an; Depot-Saldo und Sparquote des Monats steigen sichtbar.
+4. **Mögliche Umbuchungen** – die Bargeldabhebung als Vorschlag bestätigen.
+5. **Budgets** – auf der Startseite die Ampel von grün bis rot.
+6. **Regeln** – „Lebensmittel" ins Suchfeld: findet alle Supermarkt-Regeln.
+7. **Wiederkehrend** – „Erkennung ausführen" verknüpft Netflix nachträglich.
+8. **Import** – die Beispiel-CSV wie oben beschrieben einspielen.
