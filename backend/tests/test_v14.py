@@ -181,10 +181,11 @@ def test_dashboard_layout_keeps_tile_sizes(client, auth_headers):
     # ohne Angabe bleibt 0 = "Standard für diesen Kacheltyp"
     assert (by_id["networth"]["w"], by_id["networth"]["h"]) == (0, 0)
 
-    # Layouts aus der Zeit vor den Größen bleiben gültig
+    # Layouts aus der Zeit vor den Größen bleiben gültig; fehlende Felder
+    # werden mit ihren Standardwerten ergänzt (w/h seit v1.6, opts seit v1.7.4)
     legacy = [{"id": "kpis", "visible": True}]
     client.put("/api/v1/dashboard/layout", headers=h,
                params={"mode": "persoenlich"}, json={"tiles": legacy})
     back = client.get("/api/v1/dashboard/layout", headers=h,
                       params={"mode": "persoenlich"}).json()["tiles"]
-    assert back == [{"id": "kpis", "visible": True, "w": 0, "h": 0}]
+    assert back == [{"id": "kpis", "visible": True, "w": 0, "h": 0, "opts": {}}]

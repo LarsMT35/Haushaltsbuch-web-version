@@ -142,3 +142,44 @@ def test_edit_rejects_invalid_input(client, auth_headers):
                       json={"category_id": 999999}).status_code == 400
     assert client.put("/api/v1/budgets/999999", headers=h,
                       json={"amount": "10"}).status_code == 404
+
+
+# ------------------------------------------- Einstellungen je Kachel (v1.7.4)
+
+def test_layout_stores_tile_options(client, auth_headers):
+    """Was eine Kachel zeigt (Einheit, Anzahl), gehoert zum Layout und muss
+    einen Neuladen ueberstehen - sonst stellt man es bei jedem Besuch neu ein."""
+    h = auth_headers
+    tiles = [
+        {"id": "savings_rate", "visible": True, "opts": {"unit": "pct"}},
+        {"id": "by_category", "visible": True, "w": 2, "h": 300, "opts": {"top": 5}},
+        {"id": "kpis", "visible": True},           # ohne opts bleibt gueltig
+    ]
+    r = client.put("/api/v1/dashboard/layout", headers=h,
+                   params={"mode": "gesamt"}, json={"tiles": tiles})
+    assert r.status_code == 200, r.text
+
+    back = {t["id"]: t for t in client.get("/api/v1/dashboard/layout", headers=h,
+                                           params={"mode": "gesamt"}).json()["tiles"]}
+    assert back["savings_rate"]["opts"] == {"unit": "pct"}
+    assert back["by_category"]["opts"] == {"top": 5}
+    assert (back["by_category"]["w"], back["by_category"]["h"]) == (2, 300)
+    assert back["kpis"]["opts"] == {}
+
+
+def test_layout_options_are_per_mode(client, auth_headers):
+    """Bereiche haben eigene Layouts - eine Einstellung in "Gemeinsam" darf
+    "Persoenlich" nicht mitziehen."""
+    h = auth_headers
+    client.put("/api/v1/dashboard/layout", headers=h, params={"mode": "gemeinsam"},
+               json={"tiles": [{"id": "by_category", "visible": True, "opts": {"top": 20}}]})
+    client.put("/api/v1/dashboard/layout", headers=h, params={"mode": "persoenlich"},
+               json={"tiles": [{"id": "by_category", "visible": True, "opts": {"top": 5}}]})
+
+    def top(mode):
+        rows = client.get("/api/v1/dashboard/layout", headers=h,
+                          params={"mode": mode}).json()["tiles"]
+        return next(t for t in rows if t["id"] == "by_category")["opts"]["top"]
+
+    assert top("gemeinsam") == 20
+    assert top("persoenlich") == 5

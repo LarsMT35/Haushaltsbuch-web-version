@@ -543,12 +543,19 @@ class LayoutTile(BaseModel):
 
     `w` = Breite in Rasterspalten, `h` = Höhe in Pixeln. 0 heißt „Standard für
     diesen Kacheltyp" – so bleiben bestehende Layouts ohne Größenangabe gültig.
+
+    `opts` nimmt Einstellungen auf, die nur die Darstellung EINER Kachel
+    betreffen (Einheit € oder %, Anzahl der gezeigten Kategorien, Zeitfenster).
+    Bewusst ein freies Objekt statt einzelner Spalten: eine neue Auswertung
+    soll eine neue Kachel sein, kein Schema-Umbau (4.9.1). Der Inhalt wird
+    nicht geprüft – er steuert ausschließlich die Anzeige im Browser.
     """
 
     id: str
     visible: bool = True
     w: int = 0
     h: int = 0
+    opts: dict = {}
 
 
 class LayoutOut(BaseModel):

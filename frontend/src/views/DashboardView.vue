@@ -40,11 +40,10 @@ function lastMonthRange() {
 // Verlaufs-Kacheln hängen bewusst NICHT am Zeitraumfilter: ein Liniendiagramm
 // über einen einzelnen Monat wäre ein einzelner Punkt. Sie zeigen immer ein
 // rollierendes Fenster, der gewählte Zeitraum wird darin nur hervorgehoben (4.9).
-const TREND_MONTHS = 12
 function trendRange() {
   const now = new Date()
   return {
-    date_from: fmtDateLocal(new Date(now.getFullYear(), now.getMonth() - (TREND_MONTHS - 1), 1)),
+    date_from: fmtDateLocal(new Date(now.getFullYear(), now.getMonth() - (trendMonths.value - 1), 1)),
     date_to: fmtDateLocal(now),
   }
 }
@@ -203,7 +202,7 @@ const dragId = ref(null)
 
 function blankTile(id) {
   const hidden = HIDDEN_BY_MODE[mode.value] || []
-  return { id, visible: !hidden.includes(id), w: 0, h: 0 }
+  return { id, visible: !hidden.includes(id), w: 0, h: 0, opts: {} }
 }
 function defaultLayout() {
   return TILES.map(([id]) => blankTile(id))
@@ -212,7 +211,7 @@ function normalizeLayout(stored) {
   // gespeicherte Reihenfolge übernehmen, neue Kacheltypen hinten anfügen
   const known = new Set(TILES.map(([id]) => id))
   const result = (stored || []).filter((t) => known.has(t.id))
-    .map((t) => ({ w: 0, h: 0, ...t }))   // Layouts ohne Größenangabe bleiben gültig
+    .map((t) => ({ w: 0, h: 0, opts: {}, ...t }))   // ältere Layouts bleiben gültig
   if (!result.length) return defaultLayout()
   for (const [id] of TILES) {
     if (!result.find((t) => t.id === id)) result.push(blankTile(id))
@@ -251,6 +250,40 @@ function onDrop(targetId) {
   saveLayout()
 }
 const tileOf = (id) => layout.value.find((t) => t.id === id)
+
+// ------------------------------------------------- Einstellungen je Kachel
+// Was eine Kachel zeigt, ist Geschmackssache: "Top 10 Kategorien" ist für den
+// einen zu viel, für den anderen zu wenig. Die Wahl gehört deshalb an die
+// Kachel und wird mit dem Layout gespeichert – pro Nutzer und Bereich.
+const TILE_DEFAULTS = {
+  savings_rate: { unit: 'eur' },   // eur | pct
+  by_category: { top: 10 },
+  category_trend: { lines: 5 },
+}
+
+function tileOpt(id, key) {
+  const t = tileOf(id)
+  const value = t && t.opts ? t.opts[key] : undefined
+  return value === undefined ? TILE_DEFAULTS[id]?.[key] : value
+}
+function setTileOpt(id, key, value, reloadData = false) {
+  const t = tileOf(id)
+  if (!t) return
+  if (!t.opts) t.opts = {}
+  t.opts[key] = value
+  saveLayout()
+  if (reloadData) load()
+}
+
+// Zeitfenster der Verlaufs-Kacheln – gilt bewusst für alle gemeinsam, damit
+// zwei Verläufe nebeneinander nicht unterschiedlich weit zurückreichen.
+const TREND_CHOICES = [6, 12, 24, 36]
+const trendMonths = ref(Number(localStorage.getItem('trend_months')) || 12)
+function setTrendMonths(n) {
+  trendMonths.value = n
+  localStorage.setItem('trend_months', String(n))
+  load()
+}
 
 function tileProps(id) {
   const t = tileOf(id) || {}
@@ -364,7 +397,8 @@ async function load() {
     optional('budget_progress', () => api.get('/budgets/status',
       { date_in_period: dateInPeriod, account_ids })),
     optional('cumulative', () => api.get('/dashboard/cumulative', { month: dateInPeriod.slice(0, 7), account_ids })),
-    optional('category_trend', () => api.get('/dashboard/category-trend', { ...trendParams, limit: 5 })),
+    optional('category_trend', () => api.get('/dashboard/category-trend',
+      { ...trendParams, limit: tileOpt('category_trend', 'lines') })),
     optional('top_counterparties', () => api.get('/dashboard/top-counterparties', { ...range, account_ids, limit: 10 })),
   ])
   await loadDeposits()
@@ -436,7 +470,24 @@ const cashflow = computed(() => {
 
 // Waagerechte Balken statt Donut: Längen vergleicht das Auge deutlich
 // zuverlässiger als Kreissegmente, gerade bei vielen Kategorien.
-const topCategories = computed(() => (summary.value?.by_category || []).slice(0, 10))
+/** Auffälligster Monat mit Quote über 100 % – der erklärungsbedürftige Fall. */
+const savingsRateOutlier = computed(() => {
+  const s = savingsRate.value
+  if (!s) return null
+  let best = null
+  s.months.forEach((month, i) => {
+    if (s.rate[i] > 100 && (!best || s.rate[i] > best.rate)) {
+      best = { month, rate: s.rate[i], saved: s.saved[i], income: s.income[i] }
+    }
+  })
+  return best
+})
+
+const topCategories = computed(() => {
+  const rows = summary.value?.by_category || []
+  const top = tileOpt('by_category', 'top')
+  return top === 0 ? rows : rows.slice(0, top)
+})
 
 // ------------------------------------------- Sprung in die Buchungsliste
 // Ein Diagramm beantwortet "wie viel", die Buchungsliste "woraus". Ohne
@@ -585,9 +636,14 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         <option v-for="y in availableYears" :key="y" :value="y">{{ y }}</option>
       </select>
     </div>
-    <p class="hint" style="margin-top: -0.5rem">
+    <div class="chips segmented" style="margin: -0.25rem 0 .5rem">
+      <span class="hint" style="align-self: center; margin-right: .3rem">Verlauf:</span>
+      <button v-for="n in TREND_CHOICES" :key="n" type="button"
+              :class="{ active: trendMonths === n }" @click="setTrendMonths(n)">{{ n }} Monate</button>
+    </div>
+    <p class="hint" style="margin-top: -0.25rem">
       Zeitraum gilt für Kennzahlen und Kategorien; Verlaufs-Kacheln zeigen immer die letzten
-      {{ TREND_MONTHS }} Monate. Kacheln per Drag &amp; Drop anordnen, ✕ blendet aus.
+      {{ trendMonths }} Monate. Kacheln per Drag &amp; Drop anordnen, ✕ blendet aus.
       <template v-if="period && period.start_day > 1">
         Abrechnungsmonat beginnt am {{ period.start_day }}. – laufender Zeitraum
         <strong>{{ period.current_period }}</strong> ({{ fmtDate(period.current_from) }} –
@@ -769,8 +825,14 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
                 @pointerdown="startResize($event, 'category_trend')"
                 @dblclick="resetSize('category_trend')"></button>
         <h3>Kategorie-Trend
-          <span class="hint">größte Ausgabenkategorien, letzte {{ TREND_MONTHS }} Monate –
-            Klick öffnet Kategorie und Monat</span></h3>
+          <span class="hint">größte Ausgabenkategorien, letzte {{ trendMonths }} Monate –
+            Klick öffnet Kategorie und Monat</span>
+          <span class="tile-opts">
+            <button v-for="n in [3, 5, 8]" :key="n" type="button"
+                    :class="{ active: tileOpt('category_trend','lines') === n }"
+                    @click="setTileOpt('category_trend','lines', n, true)">{{ n }} Linien</button>
+          </span>
+        </h3>
         <ChartCanvas v-if="categoryTrend.rows.length" type="line" clickable @pick="pickCategoryTrend"
           :labels="categoryTrend.months"
           :datasets="categoryTrend.rows.map((r, i) => ({ label: r.category_name, data: r.values,
@@ -804,7 +866,7 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
                 @pointerdown="startResize($event, 'cashflow')"
                 @dblclick="resetSize('cashflow')"></button>
         <h3>Einnahmen / Ausgaben im Verlauf
-          <span class="hint">letzte {{ TREND_MONTHS }} Monate – Klick öffnet den Monat</span></h3>
+          <span class="hint">letzte {{ trendMonths }} Monate – Klick öffnet den Monat</span></h3>
         <ChartCanvas type="bar" clickable @pick="pickCashflowMonth" :labels="cashflow.months"
           :datasets="[
             { label: 'Einnahmen', data: cashflow.income, backgroundColor: '#15803d' },
@@ -819,7 +881,13 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
                 @pointerdown="startResize($event, 'by_category')"
                 @dblclick="resetSize('by_category')"></button>
-        <h3>Ausgaben nach Kategorie <span class="hint">Klick öffnet die Buchungen</span></h3>
+        <h3>Ausgaben nach Kategorie <span class="hint">Klick öffnet die Buchungen</span>
+          <span class="tile-opts">
+            <button v-for="n in [5, 10, 20, 0]" :key="n" type="button"
+                    :class="{ active: tileOpt('by_category','top') === n }"
+                    @click="setTileOpt('by_category','top', n)">{{ n === 0 ? 'alle' : `Top ${n}` }}</button>
+          </span>
+        </h3>
         <ChartCanvas v-if="topCategories.length" type="bar" clickable @pick="pickCategory"
           :labels="topCategories.map((c) => c.category_name)"
           :datasets="[{ data: topCategories.map((c) => c.value), backgroundColor: palette }]"
@@ -853,7 +921,7 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
                 @pointerdown="startResize($event, 'savings')"
                 @dblclick="resetSize('savings')"></button>
         <h3>Monatliche Bewegung der Sparkonten
-          <span class="hint">letzte {{ TREND_MONTHS }} Monate – Klick öffnet den Monat</span></h3>
+          <span class="hint">letzte {{ trendMonths }} Monate – Klick öffnet den Monat</span></h3>
         <ChartCanvas type="bar" clickable @pick="pickSavingsMonth"
           :labels="trend.savings_movement.map((m) => m.month)"
           :datasets="[{ label: 'Bewegung', data: trend.savings_movement.map((m) => m.value),
@@ -865,7 +933,7 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
                 @pointerdown="startResize($event, 'networth')"
                 @dblclick="resetSize('networth')"></button>
-        <h3>Vermögensverlauf (Monatsende) <span class="hint">letzte {{ TREND_MONTHS }} Monate</span></h3>
+        <h3>Vermögensverlauf (Monatsende) <span class="hint">letzte {{ trendMonths }} Monate</span></h3>
         <ChartCanvas type="line"
           :labels="networth.months"
           :datasets="[
@@ -880,8 +948,28 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         <button class="tile-resize" title="Größe ziehen – Doppelklick setzt zurück"
                 @pointerdown="startResize($event, 'savings_rate')"
                 @dblclick="resetSize('savings_rate')"></button>
-        <h3>Sparquote <span class="hint">letzte {{ TREND_MONTHS }} Monate</span></h3>
-        <ChartCanvas type="bar"
+        <h3>Sparquote <span class="hint">letzte {{ trendMonths }} Monate</span>
+          <span class="tile-opts">
+            <button type="button" :class="{ active: tileOpt('savings_rate','unit') === 'eur' }"
+                    @click="setTileOpt('savings_rate','unit','eur')">€</button>
+            <button type="button" :class="{ active: tileOpt('savings_rate','unit') === 'pct' }"
+                    @click="setTileOpt('savings_rate','unit','pct')">%</button>
+          </span>
+        </h3>
+        <!-- In Euro ist die Aussage unmittelbar; Prozent braucht immer den
+             Bezug "wovon". Deshalb ist € die Voreinstellung. -->
+        <ChartCanvas v-if="tileOpt('savings_rate','unit') === 'eur'" type="bar"
+          :labels="savingsRate.months"
+          :datasets="[
+            { label: 'tatsächlich gespart €', data: savingsRate.saved,
+              backgroundColor: savingsRate.saved.map((v) => v >= 0 ? '#0f766e' : '#b91c1c') },
+            { type: 'line', label: 'Sparpotenzial (Einnahmen − Ausgaben) €', data: savingsRate.surplus,
+              borderColor: '#9aa7b4', borderDash: [5, 4], borderWidth: 2, pointRadius: 0, tension: .2 },
+            { type: 'line', label: 'Einnahmen €', data: savingsRate.income,
+              borderColor: '#2563eb', borderWidth: 1.5, pointRadius: 0, tension: .2 },
+          ]"
+          :options="{ scales: { y: { ticks: { callback: (v) => v + ' €' } } } }" />
+        <ChartCanvas v-else type="bar"
           :labels="savingsRate.months"
           :datasets="[
             { label: 'tatsächlich gespart %', data: savingsRate.rate,
@@ -895,6 +983,17 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
           (200 € aufs Tagesgeld, 50 € zurück = 150 € gespart).
           Die gestrichelte Linie ist das, was rechnerisch übrig blieb – der Abstand dazwischen liegt
           unverzinst auf dem Girokonto.
+        </p>
+        <!-- Eine Quote über 100 % ist rechnerisch richtig, aber ohne Erklärung
+             sinnlos: gespart wurde dann aus vorhandenem Guthaben, nicht aus dem
+             Einkommen des Monats. -->
+        <p v-if="savingsRateOutlier" class="hint" style="margin: .3rem 0 0">
+          <strong>{{ savingsRateOutlier.month }}: {{ savingsRateOutlier.rate }} %</strong> –
+          das sind <strong>{{ fmtAmount(savingsRateOutlier.saved) }}</strong> auf die Sparkonten
+          bei <strong>{{ fmtAmount(savingsRateOutlier.income) }}</strong> Einnahmen in diesem
+          Zeitraum. Mehr als 100 % heißt: das Geld kam nicht aus dem laufenden Einkommen,
+          sondern lag schon da (umgeschichtetes Guthaben) – oder das Gehalt fiel in eine
+          andere Periode. Die Ansicht <em>€</em> zeigt das unverfälscht.
         </p>
       </div>
 

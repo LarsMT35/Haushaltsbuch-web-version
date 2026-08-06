@@ -321,6 +321,24 @@ automatisch aus.
   wieder bei 0. Auf der Budgetseite lässt sich mit *‹ › · Laufender Zeitraum*
   durch die Perioden blättern, und eine Spalte **Rest** zeigt, was übrig ist.
 
+### v1.7.4 – Sparquote in Euro, einstellbare Diagramme
+
+- ✅ **Sparquote zeigt jetzt Euro statt nur Prozent.** „300 % Sparquote“ ist
+  rechnerisch richtig und trotzdem nicht zu gebrauchen – die Zahl sagt nicht,
+  um wie viel Geld es geht. Die Kachel zeigt standardmäßig **€** (gespart,
+  Sparpotenzial, Einnahmen) und lässt sich mit einem Klick auf **%**
+  umschalten.
+- ✅ **Quoten über 100 % werden erklärt** statt kommentarlos stehen gelassen:
+  *„2026-05: 161,8 % – das sind 4.450 € auf die Sparkonten bei 2.750 €
+  Einnahmen. Mehr als 100 % heißt: das Geld kam nicht aus dem laufenden
+  Einkommen, sondern lag schon da.“*
+- ✅ **Diagramme einstellbar, wo es etwas ändert**: Zeitfenster der
+  Verlaufs-Kacheln (6/12/24/36 Monate), Anzahl der Kategorien in *Ausgaben
+  nach Kategorie* (Top 5/10/20/alle), Anzahl der Linien im *Kategorie-Trend*
+  (3/5/8) und die Einheit der *Sparquote*. Die Einstellungen gehören zur
+  jeweiligen Kachel und werden mit dem Layout gespeichert – pro Nutzer und
+  pro Bereich.
+
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).
 

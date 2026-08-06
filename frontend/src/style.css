@@ -235,6 +235,22 @@ a { color: var(--accent); text-decoration: none; }
 .tile:hover .tile-resize { opacity: .65; }
 .tile-resize:hover { opacity: 1 !important; }
 .tile.resizing { user-select: none; outline: 2px dashed var(--accent); outline-offset: -2px; }
+
+/* Einstellungen je Kachel (Einheit, Anzahl) – klein und rechts in der
+   Überschrift, damit sie die Auswertung nicht überlagern. Gedämpft, bis man
+   die Kachel überfährt; per Tastatur bleiben sie jederzeit erreichbar. */
+.tile-opts { float: right; display: inline-flex; gap: .2rem; opacity: .4; transition: opacity .15s; }
+.tile:hover .tile-opts, .tile-opts:focus-within { opacity: 1; }
+.tile-opts button {
+  font-size: .72rem; padding: .1rem .4rem; line-height: 1.5;
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  border-radius: 5px; cursor: pointer;
+}
+.tile-opts button:hover { border-color: var(--accent); color: var(--text); }
+.tile-opts button.active {
+  background: var(--accent-soft); border-color: var(--accent); color: var(--text); font-weight: 600;
+}
+
 /* Breite Kacheln über die ganze Reihe statt über zwei Spalten: bei ungerader
    Spaltenzahl (z.B. 3 auf 1440px, 5 auf 1920px) blieb sonst je Reihe eine
    Spalte ungenutzt, während die Diagramme darin gequetscht wurden. */
