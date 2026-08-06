@@ -7,6 +7,8 @@ from ..deps import accessible_account_ids, get_current_user, require_account_acc
 from ..models import Transaction, Transfer, User
 from ..schemas import TransferLink, TransferSuggestion
 from ..services.audit import log
+from ..services.periods import get_start_day
+from .transactions import _out as tx_out
 from ..services import transfers as svc
 
 router = APIRouter(prefix="/transfers", tags=["transfers"])
@@ -15,7 +17,10 @@ router = APIRouter(prefix="/transfers", tags=["transfers"])
 @router.get("/suggestions", response_model=list[TransferSuggestion])
 def suggestions(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     pairs = svc.transfer_suggestions(db, accessible_account_ids(db, user))
-    return [TransferSuggestion(transaction_a=a, transaction_b=b) for a, b in pairs]
+    # gleiche Ausgabe wie in der Buchungsliste: wirksamer Abrechnungsmonat
+    start_day = get_start_day(db)
+    return [TransferSuggestion(transaction_a=tx_out(a, start_day),
+                               transaction_b=tx_out(b, start_day)) for a, b in pairs]
 
 
 @router.post("/detect")

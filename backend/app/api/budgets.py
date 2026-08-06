@@ -19,7 +19,7 @@ from ..schemas import (BudgetCreate, BudgetOut, BudgetStatusOut, BudgetStatusRow
 from ..services.audit import log
 from ..services.periods import (SETTING_KEY as PERIOD_KEY, current_period,
                                 effective_period, get_start_day, normalize_start_day,
-                                period_bounds, period_key)
+                                period_bounds, period_key, range_condition)
 
 router = APIRouter(prefix="/budgets", tags=["budgets"])
 
@@ -127,13 +127,12 @@ def budget_status(month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
     for b in budgets:
         effective[(b.category_id, b.account_id)] = b
 
-    # Zeitraum großzügig laden und über den Abrechnungsmonat filtern: bei
-    # verschobenem Starttag liegen die Ränder außerhalb des Kalendermonats.
+    # Auch von Hand zugeordnete Buchungen einsammeln – deren Buchungsdatum kann
+    # beliebig weit außerhalb des Zeitraums liegen (services/periods.py).
     txs = (db.query(Transaction)
            .filter(Transaction.account_id.in_(filter_ids),
-                   Transaction.booking_date >= first - timedelta(days=40),
-                   Transaction.booking_date <= last + timedelta(days=40),
-                   Transaction.transfer_id.is_(None))
+                   Transaction.transfer_id.is_(None),
+                   range_condition(first, last, start_day))
            .all())
     all_categories = db.query(Category).all()
     transfer_like_ids = {c.id for c in all_categories if c.is_transfer_like}

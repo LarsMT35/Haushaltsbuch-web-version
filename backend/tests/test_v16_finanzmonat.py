@@ -280,3 +280,85 @@ def test_global_budget_still_spans_the_current_selection(client, auth_headers):
 
     assert spent([a["id"]]) == 30.0
     assert spent([a["id"], b["id"]]) == 80.0
+
+
+def test_manual_assignment_is_visible_in_its_period_range(client, auth_headers, start_day_27):
+    """Regression: Die Endpunkte filterten per SQL nach Buchungsdatum und
+    gruppierten erst danach nach Abrechnungsmonat. Ein am 25.07. eingegangenes,
+    dem August zugeordnetes Gehalt fiel damit aus dem August-Zeitraum
+    (27.07.–26.08.) heraus – also genau aus der Ansicht, für die die Zuordnung
+    gedacht ist. Die Startseite zeigte 0 € Einnahmen statt 3000 €.
+    """
+    h = auth_headers
+    giro = _account(client, h, "V16-Rangefix")
+    cats = _cats(client, h)
+
+    tx = _book(client, h, giro, "2026-07-25", "3000.00", "Arbeitgeber", cats["Gehalt"]["id"])
+    client.put(f"/api/v1/transactions/{tx['id']}", headers=h, json={"financial_month": "2026-08"})
+    _book(client, h, giro, "2026-08-10", "-300.00", "Vermieter", cats["Miete / Wohnen"]["id"])
+    _book(client, h, giro, "2026-07-20", "-50.00", "Markt", cats["Lebensmittel"]["id"])
+
+    per = client.get("/api/v1/budgets/period", headers=h).json()
+
+    def summary(date_from, date_to):
+        return client.get("/api/v1/dashboard/summary", headers=h, params={
+            "date_from": date_from, "date_to": date_to, "account_ids": [giro["id"]]}).json()
+
+    # August-Periode: das zugeordnete Gehalt zählt mit, obwohl es davor gebucht wurde
+    august = summary(per["current_from"], per["current_to"])
+    assert august["income"] == 3000.0
+    assert august["expenses"] == 300.0
+
+    # Juli-Periode: es taucht NICHT zusätzlich hier auf
+    juli = summary(per["previous_from"], per["previous_to"])
+    assert juli["income"] == 0.0
+    assert juli["expenses"] == 50.0
+
+    # Teilzeitraum: wer ausdrücklich den 5.–20.08. abfragt, will den Ausschnitt
+    # sehen – nicht ein Gehalt vom 25.07., nur weil es dem August zugeordnet ist
+    teil = summary("2026-08-05", "2026-08-20")
+    assert teil["income"] == 0.0
+    assert teil["expenses"] == 300.0
+
+
+def test_manual_assignment_reaches_budget_and_trend(client, auth_headers, start_day_27):
+    """Dieselbe Lücke gab es im Budget-Status und im Kategorie-Trend."""
+    h = auth_headers
+    giro = _account(client, h, "V16-Rangefix2")
+    cats = _cats(client, h)
+    cat = cats["Elektronik"]["id"]
+    client.post("/api/v1/budgets", headers=h, json={
+        "category_id": cat, "account_id": giro["id"], "amount": "500.00",
+        "valid_from": "2026-01-01"})
+
+    # weit außerhalb des August-Zeitraums gebucht, aber dorthin zugeordnet
+    tx = _book(client, h, giro, "2026-05-02", "-120.00", "Saturn", cat)
+    client.put(f"/api/v1/transactions/{tx['id']}", headers=h, json={"financial_month": "2026-08"})
+
+    rows = client.get("/api/v1/budgets/status", headers=h, params={
+        "month": "2026-08", "account_ids": [giro["id"]]}).json()["rows"]
+    assert next(r["spent"] for r in rows if r["category_id"] == cat) == 120.0
+    # im Mai zählt sie folgerichtig nicht mehr
+    rows_mai = client.get("/api/v1/budgets/status", headers=h, params={
+        "month": "2026-05", "account_ids": [giro["id"]]}).json()["rows"]
+    assert next((r["spent"] for r in rows_mai if r["category_id"] == cat), 0.0) == 0.0
+
+    per = client.get("/api/v1/budgets/period", headers=h).json()
+    trend = client.get("/api/v1/dashboard/category-trend", headers=h, params={
+        "date_from": "2026-01-01", "date_to": per["current_to"],
+        "account_ids": [giro["id"]], "limit": 10}).json()
+    row = next(r for r in trend["rows"] if r["category_name"] == "Elektronik")
+    per_month = dict(zip(trend["months"], row["values"]))
+    assert per_month["2026-08"] == 120.0
+    assert per_month.get("2026-05", 0.0) == 0.0
+
+
+def test_covered_periods_only_counts_fully_contained_ones():
+    from datetime import date
+    from app.services.periods import covered_periods
+    # deckt die August-Periode (27.07.–26.08.) vollständig ab
+    assert "2026-08" in covered_periods(date(2026, 7, 27), date(2026, 8, 26), 27)
+    # Ausschnitt daraus: nicht abgedeckt
+    assert covered_periods(date(2026, 8, 5), date(2026, 8, 20), 27) == set()
+    # Kalendermonat als Voreinstellung verhält sich unverändert
+    assert covered_periods(date(2026, 8, 1), date(2026, 8, 31), 1) == {"2026-08"}

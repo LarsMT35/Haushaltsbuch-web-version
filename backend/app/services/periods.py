@@ -96,3 +96,53 @@ def effective_period(tx, start_day: int = DEFAULT_START_DAY) -> str:
     rechnen sich alle übrigen Buchungen automatisch neu ein.
     """
     return tx.financial_month or period_key(tx.booking_date, start_day)
+
+
+# --------------------------------------------------- Zeitraum-Auswahl (4.9)
+# Ein reiner Datumsfilter in SQL greift zu kurz, sobald eine Buchung von Hand
+# einem anderen Abrechnungsmonat zugeordnet wurde: Ein am 25.07. eingegangenes
+# Gehalt, das zum August gehört, läge außerhalb des August-Zeitraums
+# (27.07.–26.08.) und verschwände genau aus der Ansicht, für die die Zuordnung
+# gedacht ist. Deshalb entscheidet bei zugeordneten Buchungen die Periode,
+# bei allen übrigen weiterhin das Datum – so bleiben auch Teilzeiträume
+# ("5. bis 20. August") exakt.
+
+def range_condition(date_from: date, date_to: date, start_day: int = DEFAULT_START_DAY):
+    """SQL-Bedingung, die auch von Hand zugeordnete Buchungen einsammelt."""
+    from sqlalchemy import and_, or_
+
+    from ..models import Transaction
+
+    return or_(
+        and_(Transaction.booking_date >= date_from, Transaction.booking_date <= date_to),
+        Transaction.financial_month.in_(period_range(date_from, date_to, start_day)),
+    )
+
+
+def covered_periods(date_from: date, date_to: date,
+                    start_day: int = DEFAULT_START_DAY) -> set[str]:
+    """Abrechnungsmonate, die der Zeitraum VOLLSTÄNDIG enthält.
+
+    Nur für die zählt eine manuelle Zuordnung: fragt jemand ausdrücklich den
+    5. bis 20. August ab, will er diesen Ausschnitt sehen – und nicht ein am
+    25.07. eingegangenes Gehalt, das dem August zugeordnet wurde.
+    """
+    covered = set()
+    for key in period_range(date_from, date_to, start_day):
+        start, end = period_bounds(key, start_day)
+        if date_from <= start and end <= date_to:
+            covered.add(key)
+    return covered
+
+
+def in_selected_range(tx, date_from: date, date_to: date,
+                      start_day: int = DEFAULT_START_DAY, keys: set[str] | None = None) -> bool:
+    """Gehört die Buchung in den angefragten Zeitraum?
+
+    Von Hand zugeordnete Buchungen folgen ihrer Periode (sofern der Zeitraum
+    diese ganz abdeckt), alle übrigen weiterhin ihrem Buchungsdatum.
+    """
+    if tx.financial_month:
+        return tx.financial_month in (keys if keys is not None
+                                      else covered_periods(date_from, date_to, start_day))
+    return date_from <= tx.booking_date <= date_to

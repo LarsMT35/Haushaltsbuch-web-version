@@ -101,12 +101,15 @@ a { color: var(--accent); text-decoration: none; }
 }
 .account-item.account-total:hover { background: none; }
 
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1rem; }
 .tile {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 12px; padding: 1rem; min-width: 0;
 }
-.tile.wide { grid-column: span 2; }
+/* Breite Kacheln über die ganze Reihe statt über zwei Spalten: bei ungerader
+   Spaltenzahl (z.B. 3 auf 1440px, 5 auf 1920px) blieb sonst je Reihe eine
+   Spalte ungenutzt, während die Diagramme darin gequetscht wurden. */
+.tile.wide { grid-column: 1 / -1; }
 @media (max-width: 800px) { .tile.wide { grid-column: span 1; } }
 .tile { position: relative; }
 .tile h3 { margin: 0 0 .5rem; font-size: .95rem; color: var(--muted); }

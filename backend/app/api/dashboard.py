@@ -19,9 +19,12 @@ from ..services.periods import (
     current_period,
     effective_period,
     get_start_day,
+    covered_periods,
+    in_selected_range,
     period_bounds,
     period_key,
     period_range,
+    range_condition,
 )
 from ..schemas import (
     AccountBalance,
@@ -70,11 +73,12 @@ def summary(date_from: date | None = None, date_to: date | None = None,
                 .filter(Account.id.in_(filter_ids), Account.archived.is_(False)).all()}
     categories = {c.id: c for c in db.query(Category).all()}
 
-    txs = (db.query(Transaction)
+    start_day = get_start_day(db)
+    period_keys = covered_periods(date_from, date_to, start_day)
+    txs = [t for t in db.query(Transaction)
            .filter(Transaction.account_id.in_(filter_ids),
-                   Transaction.booking_date >= date_from,
-                   Transaction.booking_date <= date_to)
-           .all())
+                   range_condition(date_from, date_to, start_day)).all()
+           if in_selected_range(t, date_from, date_to, start_day, period_keys)]
     if category_ids:
         cat_id_set = set(category_ids)
         txs = [t for t in txs if t.category_id in cat_id_set]
@@ -89,7 +93,6 @@ def summary(date_from: date | None = None, date_to: date | None = None,
              "expenses_fixed": Decimal("0"), "expenses_variable": Decimal("0")}
     savings: dict[str, Decimal] = defaultdict(Decimal)
 
-    start_day = get_start_day(db)
     for t in txs:
         month = effective_period(t, start_day)
         acc = accounts.get(t.account_id)
@@ -159,17 +162,6 @@ def summary(date_from: date | None = None, date_to: date | None = None,
         fixed_vs_variable={k: float(v) for k, v in fixed.items()},
         savings_movement=[MonthValue(month=m, value=float(savings[m])) for m in months],
     )
-
-
-def _month_range(date_from: date, date_to: date) -> list[str]:
-    months = []
-    y, m = date_from.year, date_from.month
-    while (y, m) <= (date_to.year, date_to.month):
-        months.append(f"{y:04d}-{m:02d}")
-        m += 1
-        if m > 12:
-            y, m = y + 1, 1
-    return months
 
 
 @router.get("/networth", response_model=NetWorthOut)
@@ -245,13 +237,13 @@ def savings_rate(date_from: date | None = None, date_to: date | None = None,
 
     # Hier bewusst OHNE transfer_id-Filter: der Zufluss auf die Sparkonten
     # besteht ja gerade aus Umbuchungen.
-    txs = (db.query(Transaction)
-           .filter(Transaction.account_id.in_(filter_ids),
-                   Transaction.booking_date >= date_from,
-                   Transaction.booking_date <= date_to)
-           .all())
     start_day = get_start_day(db)
     months = period_range(date_from, date_to, start_day)
+    covered = covered_periods(date_from, date_to, start_day)
+    txs = [t for t in db.query(Transaction)
+           .filter(Transaction.account_id.in_(filter_ids),
+                   range_condition(date_from, date_to, start_day)).all()
+           if in_selected_range(t, date_from, date_to, start_day, covered)]
     inc = {m: Decimal("0") for m in months}
     out = {m: Decimal("0") for m in months}
     saved = {m: Decimal("0") for m in months}
@@ -342,13 +334,13 @@ def deposits(account_id: int, date_from: date | None = None, date_to: date | Non
         date_from = date_to.replace(day=1).replace(year=date_to.year - 1)
     months = period_range(date_from, date_to, start_day)
 
-    txs = (db.query(Transaction)
+    covered = covered_periods(date_from, date_to, start_day)
+    txs = [t for t in db.query(Transaction)
            .filter(Transaction.account_id == account_id,
-                   Transaction.booking_date >= date_from,
-                   Transaction.booking_date <= date_to,
                    Transaction.transfer_id.is_(None),
-                   Transaction.amount > 0)
-           .all())
+                   Transaction.amount > 0,
+                   range_condition(date_from, date_to, start_day)).all()
+           if in_selected_range(t, date_from, date_to, start_day, covered)]
 
     per_month: dict[str, dict[str, Decimal]] = {m: defaultdict(Decimal) for m in months}
     depositors: set[str] = set()
@@ -456,11 +448,11 @@ def category_trend(date_from: date | None = None, date_to: date | None = None,
     filter_ids = _scoped_ids(db, user, account_ids)
     all_categories = {c.id: c for c in db.query(Category).all()}
     transfer_like_ids = {cid for cid, c in all_categories.items() if c.is_transfer_like}
-    txs = (db.query(Transaction)
+    covered = covered_periods(date_from, date_to, start_day)
+    txs = [t for t in db.query(Transaction)
            .filter(Transaction.account_id.in_(filter_ids),
-                   Transaction.booking_date >= date_from,
-                   Transaction.booking_date <= date_to)
-           .all())
+                   range_condition(date_from, date_to, start_day)).all()
+           if in_selected_range(t, date_from, date_to, start_day, covered)]
 
     per: dict[tuple[int | None, str], Decimal] = defaultdict(Decimal)
     totals: dict[int | None, Decimal] = defaultdict(Decimal)
@@ -495,12 +487,12 @@ def top_counterparties(date_from: date | None = None, date_to: date | None = Non
     filter_ids = _scoped_ids(db, user, account_ids)
     transfer_like_ids = {cid for (cid,) in db.query(Category.id)
                          .filter(Category.is_transfer_like.is_(True)).all()}
-    txs = (db.query(Transaction)
+    start_day = get_start_day(db)
+    txs = [t for t in db.query(Transaction)
            .filter(Transaction.account_id.in_(filter_ids),
-                   Transaction.booking_date >= date_from,
-                   Transaction.booking_date <= date_to,
-                   Transaction.transfer_id.is_(None))
-           .all())
+                   Transaction.transfer_id.is_(None),
+                   range_condition(date_from, date_to, start_day)).all()
+           if in_selected_range(t, date_from, date_to, start_day)]
 
     totals: dict[str, Decimal] = defaultdict(Decimal)
     counts: dict[str, int] = defaultdict(int)
