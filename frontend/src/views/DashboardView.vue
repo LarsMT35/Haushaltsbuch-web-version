@@ -1,6 +1,6 @@
 <script setup>
 import { computed, inject, onMounted, ref, watch } from 'vue'
-import { api, fmtAmount } from '../api.js'
+import { api, fmtAmount, fmtDate } from '../api.js'
 import ChartCanvas from '../components/ChartCanvas.vue'
 
 const accounts = inject('accounts')
@@ -66,6 +66,10 @@ function previousRange(fromIso, toIso) {
   return { date_from: fmtDateLocal(prevFrom), date_to: fmtDateLocal(prevTo) }
 }
 
+// Abrechnungsmonat (4.9): Grenzen kommen vom Backend, damit die Periodenregel
+// nicht ein zweites Mal in JavaScript existiert und auseinanderlaufen kann.
+const period = ref(null)
+
 const filter = ref({ account_ids: [], category_ids: [], ...lastMonthRange() })
 
 // Fertige Zeitraum-Quicklinks: ein Klick setzt Start+Ende (4.9)
@@ -76,8 +80,12 @@ function setRange(from, to, preset) {
   activePreset.value = preset
 }
 const PRESETS = {
-  this_month: () => { const n = new Date(); return [new Date(n.getFullYear(), n.getMonth(), 1), n] },
-  last_month: () => lastMonthDates(),
+  this_month: () => (period.value
+    ? [new Date(period.value.current_from), new Date(period.value.current_to)]
+    : [new Date(new Date().getFullYear(), new Date().getMonth(), 1), new Date()]),
+  last_month: () => (period.value
+    ? [new Date(period.value.previous_from), new Date(period.value.previous_to)]
+    : lastMonthDates()),
   this_year: () => { const n = new Date(); return [new Date(n.getFullYear(), 0, 1), n] },
   last_year: () => { const y = new Date().getFullYear() - 1; return [new Date(y, 0, 1), new Date(y, 11, 31)] },
   last_12_months: () => { const n = new Date(); return [new Date(n.getFullYear(), n.getMonth() - 11, 1), n] },
@@ -281,6 +289,8 @@ function pickDepositAccount() {
 
 onMounted(async () => {
   categories.value = await api.get('/categories')
+  period.value = await api.get('/budgets/period').catch(() => null)
+  if (period.value && period.value.start_day > 1) applyPreset('last_month')
   ensureValidMode()
   pickDepositAccount()
   await loadLayout()
@@ -416,8 +426,8 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
     </div>
     <!-- Zeitraum-Quicklinks (4.9) -->
     <div class="chips">
-      <button type="button" :class="{ active: activePreset === 'this_month' }" @click="applyPreset('this_month')">Dieser Monat</button>
-      <button type="button" :class="{ active: activePreset === 'last_month' }" @click="applyPreset('last_month')">Letzter Monat</button>
+      <button type="button" :class="{ active: activePreset === 'this_month' }" @click="applyPreset('this_month')">{{ period && period.start_day > 1 ? 'Laufender Zeitraum' : 'Dieser Monat' }}</button>
+      <button type="button" :class="{ active: activePreset === 'last_month' }" @click="applyPreset('last_month')">{{ period && period.start_day > 1 ? 'Letzter Zeitraum' : 'Letzter Monat' }}</button>
       <button type="button" :class="{ active: activePreset === 'this_year' }" @click="applyPreset('this_year')">Dieses Jahr</button>
       <button type="button" :class="{ active: activePreset === 'last_year' }" @click="applyPreset('last_year')">Letztes Jahr</button>
       <button type="button" :class="{ active: activePreset === 'last_12_months' }" @click="applyPreset('last_12_months')">Letzte 12 Monate</button>
@@ -430,6 +440,11 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
     <p class="hint" style="margin-top: -0.5rem">
       Zeitraum gilt für Kennzahlen und Kategorien; Verlaufs-Kacheln zeigen immer die letzten
       {{ TREND_MONTHS }} Monate. Kacheln per Drag &amp; Drop anordnen, ✕ blendet aus.
+      <template v-if="period && period.start_day > 1">
+        Abrechnungsmonat beginnt am {{ period.start_day }}. – laufender Zeitraum
+        <strong>{{ period.current_period }}</strong> ({{ fmtDate(period.current_from) }} –
+        {{ fmtDate(period.current_to) }}).
+      </template>
     </p>
 
     <div class="grid">
@@ -476,7 +491,8 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
       <!-- Kumulierter Monatsverlauf: gegensteuern, solange der Monat läuft -->
       <div v-if="isVisible('cumulative') && cumulative" class="tile wide" v-bind="tileProps('cumulative')">
         <button class="tile-close" @click="hide('cumulative')">✕</button>
-        <h3>Ausgaben kumuliert – {{ cumulative.month }} gegen {{ cumulative.previous_month }}</h3>
+        <h3>Ausgaben kumuliert – {{ cumulative.month }} gegen {{ cumulative.previous_month }}
+          <span class="hint">{{ fmtDate(cumulative.date_from) }} – {{ fmtDate(cumulative.date_to) }}</span></h3>
         <ChartCanvas type="line" :labels="cumulative.days"
           :datasets="[
             { label: cumulative.previous_month, data: cumulative.previous, borderColor: '#9aa7b4',
@@ -495,8 +511,11 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         <h3>Budget-Fortschritt <span class="hint">{{ budgetStatus.month }}</span></h3>
         <table v-if="budgetStatus.rows.length">
           <tbody>
-            <tr v-for="row in budgetStatus.rows" :key="row.category_id">
-              <td style="width: 30%">{{ row.category_name }}</td>
+            <tr v-for="row in budgetStatus.rows" :key="row.budget_id">
+              <td style="width: 30%">{{ row.category_name }}
+                <span v-if="row.account_name" class="badge gray"
+                      :title="`Gilt nur für ${row.account_name} und verbraucht sich nur an dessen Buchungen`">
+                  {{ row.account_name }}</span></td>
               <td>
                 <div class="budget-bar">
                   <div :style="{ width: Math.min(100, row.percent) + '%',

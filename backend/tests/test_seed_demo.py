@@ -22,6 +22,13 @@ def test_seed_demo_creates_consistent_data(client, auth_headers):
 
         assert db.query(User).filter(User.username == "partner").first() is not None
 
+        # Abrechnungsmonat wird auf den Gehaltstag gelegt (v1.6). Diese Zusicherung
+        # steht hier, weil nur dieser Test den Seed wirklich ausführt – danach ist
+        # er idempotent und die conftest-Fixture setzt die Einstellung zurück.
+        from app.models import AppSetting
+        from app.services.periods import SETTING_KEY
+        assert db.get(AppSetting, SETTING_KEY).value["start_day"] == 27
+
         # keine Zukunftsdaten
         future = db.query(Transaction).filter(Transaction.booking_date > date.today()).count()
         assert future == 0
@@ -115,3 +122,51 @@ def test_seed_demo_fills_the_new_dashboard_tiles(client, auth_headers):
     # Regelsuche findet über die Zielkategorie, nicht nur über den Namen
     hits = client.get("/api/v1/rules", headers=h, params={"q": "Lebensmittel"}).json()
     assert len(hits) >= 5
+
+
+def test_seed_demo_shows_financial_month_and_bound_budgets(client, auth_headers):
+    """Die Demo soll den Abrechnungsmonat (v1.6) vorführbar machen: Starttag am
+    Gehaltstag, ein früher eingegangenes Gehalt von Hand korrigiert, und
+    Budgets, die an ihr Konto gebunden sind."""
+    with SessionLocal() as db:
+        seed_demo.run(db)
+        accounts = db.query(Account).filter(Account.name.like("%(Demo)%")).all()
+    household = [a.id for a in accounts if a.is_household]
+    private = [a.id for a in accounts if not a.is_household]
+
+    h = auth_headers
+    # Der Seed setzt den Starttag auf 27; die conftest-Fixture stellt vor jedem
+    # Test den Kalendermonat wieder her, damit die Reihenfolge nichts entscheidet.
+    period = client.put("/api/v1/budgets/period", headers=h, json={"start_day": 27}).json()
+    assert period["start_day"] == 27
+
+    # Gehälter: Regel greift, ein Monat ist von Hand zugeordnet
+    salaries = client.get("/api/v1/transactions", headers=h,
+                          params={"text": "Gehalt", "limit": 20}).json()["items"]
+    salaries = [t for t in salaries if t["counterparty"] == "Arbeitgeber GmbH"]
+    assert salaries, "keine Gehaltsbuchungen in den Demodaten"
+    overridden = [t for t in salaries if t["financial_month_is_override"]]
+    assert len(overridden) == 1
+    early = overridden[0]
+    assert early["booking_date"].endswith("-25")          # kam zwei Tage früher
+    assert early["financial_month"] > early["booking_date"][:7]
+
+    # ein Gehalt vom 27. fällt nach der Regel in den Folgemonat
+    regular = next(t for t in salaries if t["booking_date"].endswith("-27"))
+    assert regular["financial_month"] > regular["booking_date"][:7]
+    assert regular["financial_month_is_override"] is False
+
+    # Budgets erscheinen nur im Bereich ihres Kontos
+    def rows(ids):
+        return client.get("/api/v1/budgets/status", headers=h, params={
+            "month": period["previous_period"], "account_ids": ids}).json()["rows"]
+
+    gemeinsam = rows(household)
+    persoenlich = rows(private)
+    assert all(r["account_name"] == "Gemeinsames Konto (Demo)" for r in gemeinsam)
+    assert all(r["account_name"] == "Girokonto (Demo)" for r in persoenlich)
+    # dieselbe Kategorie mit zwei kontogebundenen Budgets verdrängt sich nicht
+    gesamt = rows(household + private)
+    lebensmittel = [r for r in gesamt if r["category_name"] == "Lebensmittel"]
+    assert len(lebensmittel) == 2
+    assert {r["budget"] for r in lebensmittel} == {150.0, 400.0}

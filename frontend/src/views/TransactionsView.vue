@@ -64,6 +64,27 @@ async function clearSplits(tx) {
   splitRows.value = [{ category_id: tx.category_id || '', amount: tx.amount }]
 }
 
+// Abrechnungsmonat (4.9): steuert nur, in welchem Monat die Buchung in den
+// Diagrammen zählt – Buchungsdatum, Betrag und Kontostand bleiben unberührt.
+function monthOptions(tx) {
+  const [y, m] = (tx.financial_month || '').split('-').map(Number)
+  if (!y) return []
+  const out = []
+  for (let i = -3; i <= 3; i++) {
+    const d = new Date(y, m - 1 + i, 1)
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+  return out
+}
+
+async function setFinancialMonth(tx, value) {
+  error.value = ''
+  try {
+    const updated = await api.put(`/transactions/${tx.id}`, { financial_month: value || null })
+    Object.assign(tx, updated)
+  } catch (e) { error.value = e.message }
+}
+
 async function saveTags(tx) {
   error.value = ''
   try {
@@ -294,6 +315,8 @@ function doExport() {
             <strong>{{ t.counterparty }}</strong>
             <span v-if="t.is_manual" class="badge gray">manuell</span>
             <span v-if="t.transfer_id" class="badge gray">Umbuchung</span>
+            <span v-if="t.financial_month_is_override" class="badge"
+                  :title="`Zählt in den Diagrammen für ${t.financial_month}`">📅 {{ t.financial_month }}</span>
             <span v-if="t.splits.length" class="badge">Split ({{ t.splits.length }})</span>
             <span v-for="tag in t.tags" :key="tag.id" class="badge gray">🏷 {{ tag.name }}</span>
             <br /><span class="hint">{{ t.purpose }}</span>
@@ -333,6 +356,18 @@ function doExport() {
                 Summe {{ splitSum().toFixed(2) }} / {{ t.amount }}</span>
               <button class="primary" @click="saveSplits(t)">Split speichern</button>
               <button v-if="t.splits.length" @click="clearSplits(t)">Split entfernen</button>
+            </div>
+            <div class="form-row" style="margin-bottom: .25rem">
+              <strong>Abrechnungsmonat:</strong>
+              <select :value="t.financial_month" @change="setFinancialMonth(t, $event.target.value)"
+                      title="In welchem Monat diese Buchung in den Diagrammen zählt">
+                <option v-for="m in monthOptions(t)" :key="m" :value="m">{{ m }}</option>
+              </select>
+              <button v-if="t.financial_month_is_override" @click="setFinancialMonth(t, null)"
+                      title="Wieder automatisch aus dem Buchungsdatum ableiten">Automatisch</button>
+              <span class="hint">{{ t.financial_month_is_override
+                ? 'Von Hand zugeordnet – Buchungsdatum und Saldo bleiben unverändert.'
+                : 'Folgt automatisch dem Buchungsdatum.' }}</span>
             </div>
             <div class="form-row" style="margin-bottom: .25rem">
               <strong>Tags:</strong>

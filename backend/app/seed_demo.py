@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from .models import (
     Account,
     AccountRole,
+    AppSetting,
     Budget,
     Category,
     RecurringItem,
@@ -32,6 +33,7 @@ from .models import (
     User,
 )
 from .security import hash_password
+from .services.periods import SETTING_KEY as PERIOD_SETTING_KEY, period_key
 from .services.recurring import auto_link_item
 from .services.transfers import auto_link_transfers, auto_mirror_category_transfers
 
@@ -142,11 +144,18 @@ def run(db: Session) -> None:
     restaurant_shops = ["Lieferando", "Restaurant Zur Post", "Pizzeria Roma"]
     tankstellen = ["Aral Tankstelle", "Shell Station"]
 
+    # In einem Monat kommt das Gehalt zwei Tage früher (Zahltag fällt aufs
+    # Wochenende). Nach der 27er-Regel landete es im falschen Abrechnungsmonat –
+    # unten wird es per Einzelzuordnung korrigiert, genau wie im Alltag.
+    EARLY_SALARY_MONTH = 3
+    early_salary = None
+
     for m in range(6, -1, -1):
         base_month = today.replace(day=1) - relativedelta(months=m)
+        salary_day = 25 if m == EARLY_SALARY_MONTH else 27
 
         for day, amount, cp, purpose, cat in [
-            (27, 2650.00, "Arbeitgeber GmbH", f"Gehalt {base_month.strftime('%m/%Y')}", gehalt),
+            (salary_day, 2650.00, "Arbeitgeber GmbH", f"Gehalt {base_month.strftime('%m/%Y')}", gehalt),
             (3, -780.00, "Hausverwaltung Musterstadt", "Miete inkl. Nebenkosten", miete),
             (5, -95.00, "Stadtwerke Musterstadt", "Abschlag Strom/Gas", nebenkosten),
             (7, -34.99, "Telekom Deutschland", "Mobilfunk & Internet", internet),
@@ -158,7 +167,9 @@ def run(db: Session) -> None:
         ]:
             d = month_day(base_month, day)
             if d:
-                add_tx(giro, d, amount, cp, purpose, cat)
+                tx = add_tx(giro, d, amount, cp, purpose, cat)
+                if cat is gehalt and m == EARLY_SALARY_MONTH:
+                    early_salary = tx
 
         # Umbuchung Giro -> Tagesgeld, per IBAN automatisch erkennbar (4.4)
         d = month_day(base_month, 15)
@@ -278,17 +289,23 @@ def run(db: Session) -> None:
 
     # Mehrere Budgets, damit die Budget-Fortschritt-Kachel (v1.5) alle drei
     # Ampelfarben zeigt statt einer einzelnen Zeile.
+    # An Konten gebunden: ein Budget aufs Girokonto erscheint nur im Bereich
+    # "Persönlich" und verbraucht sich auch nur an dessen Buchungen, eines aufs
+    # gemeinsame Konto entsprechend nur in "Gemeinsam" (4.8/4.9.1).
     budget_defs = [
-        (lebensmittel, "400.00"), (restaurant, "120.00"), (auto, "90.00"),
-        (drogerie, "40.00"), (freizeit, "80.00"),
+        (lebensmittel, "400.00", giro), (restaurant, "120.00", giro),
+        (auto, "90.00", giro), (drogerie, "40.00", giro),
+        (freizeit, "80.00", giro),
         # Abschlag liegt fest bei 95 -> zuverlässig über Budget, damit auch
         # die rote Ampel vorkommt und nicht nur grün/gelb
-        (nebenkosten, "90.00"),
+        (nebenkosten, "90.00", giro),
+        # Haushaltsseite: taucht ausschließlich im Bereich "Gemeinsam" auf
+        (lebensmittel, "150.00", gemeinsam),
     ]
-    for cat, amount in budget_defs:
+    for cat, amount, account in budget_defs:
         if cat:
-            db.add(Budget(category_id=cat.id, amount=Decimal(amount), period="month",
-                          valid_from=start))
+            db.add(Budget(category_id=cat.id, account_id=account.id,
+                          amount=Decimal(amount), period="month", valid_from=start))
 
     # Wiederkehrende Kostenpositionen (v1.2). Die meisten werden unten
     # automatisch verknüpft, damit die Kachel "Fällig in den nächsten 30 Tagen"
@@ -341,4 +358,21 @@ def run(db: Session) -> None:
 
     if held_back:
         held_back.category_id = kapitalertraege.id
+        db.commit()
+
+    # Abrechnungsmonat auf den Gehaltstag legen (4.9): das Gehalt vom 27. ist
+    # damit das erste Ereignis der Periode statt des letzten – sonst sähe der
+    # laufende Monat bis zum Zahltag immer tiefrot aus.
+    setting = db.get(AppSetting, PERIOD_SETTING_KEY)
+    if setting is None:
+        setting = AppSetting(key=PERIOD_SETTING_KEY, value={})
+        db.add(setting)
+    setting.value = {"start_day": 27}
+    db.commit()
+
+    # Das früher eingegangene Gehalt von Hand in den richtigen Abrechnungsmonat
+    # ziehen – zeigt die Einzelzuordnung, ohne das Buchungsdatum anzufassen.
+    if early_salary is not None:
+        early_salary.financial_month = period_key(
+            early_salary.booking_date + timedelta(days=3), 27)
         db.commit()

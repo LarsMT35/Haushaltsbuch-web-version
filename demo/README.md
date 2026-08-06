@@ -41,6 +41,14 @@ realistischen ~6-Monats-Historie befüllt:
   der Regelansicht (v1.5) ihren Zweck zeigt: „Lebensmittel" findet alle
   Supermarkt-Regeln, ohne dass man die Händlernamen kennt
 - **4 unzugeordnete Buchungen** (zeigt die „Handlungsbedarf"-Kachel)
+- **Abrechnungsmonat mit Starttag 27** (v1.6): das Gehalt vom 27. ist damit das
+  erste Ereignis der Periode statt des letzten – der laufende Monat sieht nicht
+  mehr bis zum Zahltag tiefrot aus. In **einem** Monat kam das Gehalt schon am
+  25., dort ist es per **Einzelzuordnung** korrigiert (in der Buchungsliste am
+  📅-Kennzeichen erkennbar).
+- **Budgets an Konten gebunden**: sechs aufs Girokonto (Bereich *Persönlich*),
+  eines aufs gemeinsame Konto (Bereich *Gemeinsam*). Beide gelten für
+  Lebensmittel und verdrängen sich trotzdem nicht.
 
 ## `beispiel_import_sparkasse.csv`
 
@@ -75,7 +83,10 @@ eigene Datenbank, ein eigenes Volume und einen eigenen Compose-Projektnamen.
 3. **Umbuchungen erkennen** (Buchungen) – legt die fehlende Depot-Gegenbuchung
    an; Depot-Saldo und Sparquote des Monats steigen sichtbar.
 4. **Mögliche Umbuchungen** – die Bargeldabhebung als Vorschlag bestätigen.
-5. **Budgets** – auf der Startseite die Ampel von grün bis rot.
+5. **Budgets** – auf der Startseite die Ampel von grün bis rot; beim Wechsel
+   zwischen *Gemeinsam* und *Persönlich* wechseln auch die Budgets.
+   In *Einstellungen → Abrechnungsmonat* den Starttag auf 1 stellen und
+   zurück – die Diagramme rechnen sich sichtbar neu ein.
 6. **Regeln** – „Lebensmittel" ins Suchfeld: findet alle Supermarkt-Regeln.
 7. **Wiederkehrend** – „Erkennung ausführen" verknüpft Netflix nachträglich.
 8. **Import** – die Beispiel-CSV wie oben beschrieben einspielen.

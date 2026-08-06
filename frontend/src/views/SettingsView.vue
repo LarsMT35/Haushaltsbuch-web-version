@@ -19,6 +19,10 @@ const roleForm = ref({ account_id: '', user_id: '', role: 'reader' })
 const userForm = ref({ username: '', password: '', display_name: '', is_admin: false })
 const pwForm = ref({ old_password: '', new_password: '' })
 
+// Abrechnungsmonat (4.9)
+const period = ref(null)
+const periodDay = ref(1)
+
 // Saldo-Abgleich gegen Bank (4.2)
 const balanceCheckAccount = ref('')
 const balanceCheck = ref(null)
@@ -26,7 +30,18 @@ const balanceCheckBusy = ref(false)
 
 onMounted(async () => {
   if (user.value?.is_admin) users.value = await api.get('/users')
+  period.value = await api.get('/budgets/period')
+  periodDay.value = period.value.start_day
 })
+
+async function savePeriod() {
+  error.value = ''; info.value = ''
+  try {
+    period.value = await api.put('/budgets/period', { start_day: Number(periodDay.value) })
+    periodDay.value = period.value.start_day
+    info.value = `Abrechnungsmonat gespeichert – aktueller Zeitraum ${period.value.current_period}.`
+  } catch (e) { error.value = e.message }
+}
 
 async function runBalanceCheck() {
   if (!balanceCheckAccount.value) return
@@ -174,6 +189,29 @@ async function changePassword() {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Abrechnungsmonat (4.9) -->
+      <div class="tile wide">
+        <h3>Abrechnungsmonat</h3>
+        <p class="hint">Wer sein Gehalt am Monatsende bekommt, lebt davon bis zum nächsten
+          Zahltag – der Kalendermonat ist dafür das falsche Raster, bis zum Gehaltseingang
+          sähe jeder laufende Monat tiefrot aus. Mit Starttag <strong>27</strong> läuft der
+          Abrechnungsmonat vom 27. bis zum 26. und heißt nach dem Monat, in dem er endet.
+          <strong>1 = Kalendermonat</strong> (Voreinstellung).</p>
+        <div class="form-row">
+          <div><label>Monatsbeginn am Tag</label>
+            <input type="number" min="1" max="28" v-model.number="periodDay" style="width: 5rem" /></div>
+          <button class="primary" :disabled="!user?.is_admin" @click="savePeriod">Speichern</button>
+          <span v-if="period" class="hint" style="align-self: center">
+            Aktueller Zeitraum <strong>{{ period.current_period }}</strong>:
+            {{ fmtDate(period.current_from) }} – {{ fmtDate(period.current_to) }}
+          </span>
+        </div>
+        <p class="hint">Wirkt ausschließlich auf Auswertungen. Buchungsdaten, Kontostände und
+          der Saldo-Abgleich rechnen weiter mit dem echten Datum. Einzelne Buchungen lassen
+          sich in der Buchungsliste abweichend zuordnen – etwa wenn das Gehalt wegen eines
+          Wochenendes früher kam.</p>
       </div>
 
       <div class="tile wide">

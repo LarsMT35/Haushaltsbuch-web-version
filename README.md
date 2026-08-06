@@ -206,6 +206,28 @@ automatisch aus.
   erscheint die Funktion gar nicht erst; die App bleibt vollständig ohne KI
   nutzbar (Prinzip 6: die Fachlogik bleibt regelbasiert im Backend).
 
+### v1.6 – Abrechnungsmonat & kontogebundene Budgets
+
+- ✅ **Abrechnungsmonat („Finanzmonat")**: Wer sein Gehalt am 27. bekommt, lebt
+  davon bis zum nächsten 27. – der Kalendermonat ist dafür das falsche Raster,
+  bis zum Gehaltseingang sähe jeder laufende Monat tiefrot aus. Mit Starttag
+  27 läuft der Zeitraum vom 27. bis zum 26. und heißt nach dem Monat, in dem
+  er **endet**. Eine Einstellung, die **alle** Auswertungen gemeinsam trägt
+  (Bilanz, Ausgaben, Sparquote, Sparkonten, Kategorie-Trend, kumulierter
+  Verlauf, Jahresvergleich, Budgets, Quicklinks). **Starttag 1 = Kalendermonat**
+  ist die Voreinstellung, bestehende Installationen ändern sich nicht.
+- ✅ **Einzelzuordnung je Buchung**: Kommt das Gehalt wegen eines Wochenendes
+  zwei Tage früher, lässt sich die Buchung in der Detailzeile einem anderen
+  Abrechnungsmonat zuordnen – vorbelegt mit dem errechneten Monat, Abweichungen
+  sind in der Liste gekennzeichnet. **Buchungsdatum, Betrag, Kontostand und der
+  Saldo-Abgleich gegen die Bank bleiben unberührt**; gespeichert wird nur die
+  Abweichung, damit sich beim Ändern des Starttags alles Übrige neu einordnet.
+- ✅ **Budgets sind an ihr Konto gebunden**: Ein Budget aufs Girokonto erscheint
+  nur im Bereich *Persönlich* und verbraucht sich ausschließlich an dessen
+  Buchungen, eines aufs gemeinsame Konto entsprechend nur in *Gemeinsam*.
+  Zuvor tauchten Budgets in jedem Bereich auf und zwei Budgets derselben
+  Kategorie verdrängten sich gegenseitig – mit sichtbar falschen Zahlen.
+
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).
 

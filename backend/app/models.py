@@ -198,6 +198,11 @@ class Transaction(Base):
     import_batch_id: Mapped[int | None] = mapped_column(ForeignKey("import_batches.id"), nullable=True, index=True)
     raw_line: Mapped[str] = mapped_column(Text, default="")  # Rohzeile aufbewahren (Prinzip 2)
     dedup_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
+    # Manuelle Zuordnung zu einem Abrechnungsmonat ("YYYY-MM"), z.B. wenn das
+    # Gehalt wegen eines Wochenendes zwei Tage früher kam als üblich. Leer =
+    # es gilt die Regel aus dem Starttag (services/periods.py). Wirkt NUR auf
+    # Auswertungen – Buchungsdatum, Saldo und Bank-Abgleich bleiben unberührt.
+    financial_month: Mapped[str | None] = mapped_column(String(7), nullable=True)
     is_manual: Mapped[bool] = mapped_column(Boolean, default=False)
     # Automatisch erzeugte Gegenbuchung einer Kategorie mit Umbuchungs-Zielkonto
     # (4.4/v1.3b). Solche Buchungen sind abgeleitete Daten und haben kein

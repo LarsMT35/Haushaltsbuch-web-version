@@ -229,6 +229,11 @@ class TransactionOut(ORMModel):
     is_auto_counterpart: bool = False
     transfer_id: int | None
     bank_balance: Decimal | None
+    # Abrechnungsmonat (4.9): immer der WIRKSAME Wert, damit die Oberfläche das
+    # Feld vorbelegen kann. `financial_month_is_override` sagt, ob er von Hand
+    # gesetzt wurde oder aus dem Buchungsdatum folgt.
+    financial_month: str | None = None
+    financial_month_is_override: bool = False
     splits: list[SplitOut] = []
     tags: list[TagOut] = []
 
@@ -258,6 +263,9 @@ class TransactionUpdate(BaseModel):
     amount: Decimal | None = None
     counterparty: str | None = None
     purpose: str | None = None
+    # "YYYY-MM" setzt die Zuordnung von Hand, null stellt die Regel wieder her
+    # (nur mitgeschickt, wenn es geändert werden soll)
+    financial_month: str | None = None
 
 
 class TransferLink(BaseModel):
@@ -381,8 +389,13 @@ class BudgetThresholds(BaseModel):
 
 
 class BudgetStatusRow(BaseModel):
+    budget_id: int
     category_id: int
     category_name: str
+    # gesetzt = Budget gilt nur für dieses Konto und misst sich auch nur an
+    # dessen Buchungen; None = übergreifend über die aktuelle Kontenauswahl
+    account_id: int | None = None
+    account_name: str | None = None
     budget: float
     spent: float
     percent: float
@@ -393,6 +406,27 @@ class BudgetStatusOut(BaseModel):
     month: str
     thresholds: BudgetThresholds
     rows: list[BudgetStatusRow]
+
+
+class PeriodSettingIn(BaseModel):
+    start_day: int = 1
+
+
+class PeriodSettingOut(BaseModel):
+    """Abrechnungsmonat (4.9). start_day = 1 bedeutet Kalendermonat.
+
+    Die Grenzen kommen bewusst aus dem Backend: sonst müsste das Frontend die
+    Periodenregel ein zweites Mal implementieren und beide könnten auseinander
+    laufen (Prinzip 6).
+    """
+
+    start_day: int
+    current_period: str
+    current_from: date
+    current_to: date
+    previous_period: str
+    previous_from: date
+    previous_to: date
 
 
 # --------------------------------------------------------------- Dashboard
@@ -613,9 +647,11 @@ class CumulativeOut(BaseModel):
 
     month: str
     previous_month: str
-    days: list[int]
-    # None ab dem Tag nach heute: der laufende Monat endet am aktuellen Tag,
-    # sonst liefe die Linie flach bis zum Monatsende weiter
+    date_from: date          # echter Beginn des Abrechnungsmonats
+    date_to: date
+    days: list[int]          # Tag im Monat je Achsenpunkt (bei Starttag 27: 27, 28, …, 26)
+    # None ab dem Tag nach heute: der laufende Zeitraum endet am aktuellen Tag,
+    # sonst liefe die Linie flach bis zum Ende weiter
     current: list[float | None]
     previous: list[float]
 

@@ -15,6 +15,14 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import accessible_account_ids, get_current_user, require_account_access
 from ..models import Account, Category, DashboardLayout, Transaction, User
+from ..services.periods import (
+    current_period,
+    effective_period,
+    get_start_day,
+    period_bounds,
+    period_key,
+    period_range,
+)
 from ..schemas import (
     AccountBalance,
     CategoryTrendOut,
@@ -81,8 +89,9 @@ def summary(date_from: date | None = None, date_to: date | None = None,
              "expenses_fixed": Decimal("0"), "expenses_variable": Decimal("0")}
     savings: dict[str, Decimal] = defaultdict(Decimal)
 
+    start_day = get_start_day(db)
     for t in txs:
-        month = t.booking_date.strftime("%Y-%m")
+        month = effective_period(t, start_day)
         acc = accounts.get(t.account_id)
         cat = categories.get(t.category_id) if t.category_id else None
         if t.transfer_id or (cat and cat.is_transfer_like):
@@ -173,7 +182,11 @@ def networth(date_from: date | None = None, date_to: date | None = None,
         date_to = date.today()
     if date_from is None:
         date_from = date_to.replace(day=1).replace(year=date_to.year - 1)
-    months = _month_range(date_from, date_to)
+    start_day = get_start_day(db)
+    months = period_range(date_from, date_to, start_day)
+    # Der Saldo ist ein Bestand und wird zum echten Stichtag gemessen – hier
+    # zählt das Buchungsdatum, nicht eine manuelle Abrechnungsmonat-Zuordnung.
+    period_ends = [period_bounds(m, start_day)[1] for m in months]
 
     ids = accessible_account_ids(db, user)
     filter_ids = [aid for aid in account_ids if aid in ids] if account_ids else ids
@@ -185,14 +198,15 @@ def networth(date_from: date | None = None, date_to: date | None = None,
                .filter(Transaction.account_id == a.id)
                .order_by(Transaction.booking_date.asc())
                .all())
-        # Saldo vor dem ersten angefragten Monat
+        first_start = period_bounds(months[0], start_day)[0]
+        # Saldo vor dem ersten angefragten Zeitraum
         running = (a.opening_balance or Decimal("0")) + sum(
-            (amt for d, amt in txs if d.strftime("%Y-%m") < months[0]), Decimal("0"))
+            (amt for d, amt in txs if d < first_start), Decimal("0"))
         values = []
         i = 0
-        txs_in_range = [(d.strftime("%Y-%m"), amt) for d, amt in txs if d.strftime("%Y-%m") >= months[0]]
-        for month in months:
-            while i < len(txs_in_range) and txs_in_range[i][0] <= month:
+        txs_in_range = [(d, amt) for d, amt in txs if d >= first_start]
+        for end in period_ends:
+            while i < len(txs_in_range) and txs_in_range[i][0] <= end:
                 running += txs_in_range[i][1]
                 i += 1
             values.append(running)
@@ -236,12 +250,13 @@ def savings_rate(date_from: date | None = None, date_to: date | None = None,
                    Transaction.booking_date >= date_from,
                    Transaction.booking_date <= date_to)
            .all())
-    months = _month_range(date_from, date_to)
+    start_day = get_start_day(db)
+    months = period_range(date_from, date_to, start_day)
     inc = {m: Decimal("0") for m in months}
     out = {m: Decimal("0") for m in months}
     saved = {m: Decimal("0") for m in months}
     for t in txs:
-        m = t.booking_date.strftime("%Y-%m")
+        m = effective_period(t, start_day)
         if m not in inc:
             continue
         acc = accounts.get(t.account_id)
@@ -282,6 +297,7 @@ def year_comparison(account_ids: list[int] | None = Query(None),
     behandeln" zählen hier nicht als Ausgabe, wie echte Umbuchungen auch."""
     ids = accessible_account_ids(db, user)
     filter_ids = ([aid for aid in account_ids if aid in ids] or ids) if account_ids else ids
+    start_day = get_start_day(db)
     txs = (db.query(Transaction)
            .filter(Transaction.account_id.in_(filter_ids), Transaction.transfer_id.is_(None))
            .all())
@@ -293,7 +309,7 @@ def year_comparison(account_ids: list[int] | None = Query(None),
     for t in txs:
         if t.category_id in transfer_like_ids and not t.splits:
             continue
-        year = t.booking_date.year
+        year = int(effective_period(t, start_day)[:4])
         parts = ([(s.category_id, s.amount) for s in t.splits]
                  if t.splits else [(t.category_id, t.amount_ref)])
         for cid, amount in parts:
@@ -319,11 +335,12 @@ def deposits(account_id: int, date_from: date | None = None, date_to: date | Non
     Buchungen (keine Umbuchungen) je Monat nach Gegenpartei gruppiert – auf
     Bank-Exports ist das direkt der Auftraggeber/Einzahler."""
     require_account_access(db, user, account_id, "reader")
+    start_day = get_start_day(db)
     if date_to is None:
         date_to = date.today()
     if date_from is None:
         date_from = date_to.replace(day=1).replace(year=date_to.year - 1)
-    months = _month_range(date_from, date_to)
+    months = period_range(date_from, date_to, start_day)
 
     txs = (db.query(Transaction)
            .filter(Transaction.account_id == account_id,
@@ -336,7 +353,7 @@ def deposits(account_id: int, date_from: date | None = None, date_to: date | Non
     per_month: dict[str, dict[str, Decimal]] = {m: defaultdict(Decimal) for m in months}
     depositors: set[str] = set()
     for t in txs:
-        m = t.booking_date.strftime("%Y-%m")
+        m = effective_period(t, start_day)
         if m not in per_month:
             continue
         name = t.counterparty.strip() or "Unbekannt"
@@ -376,14 +393,11 @@ def cumulative(month: str | None = None, account_ids: list[int] | None = Query(N
     während des Monats, solange man noch gegensteuern kann.
     """
     today = date.today()
-    if month:
-        year, mon = int(month[:4]), int(month[5:7])
-    else:
-        year, mon = today.year, today.month
-    first = date(year, mon, 1)
-    prev_last = first - timedelta(days=1)
-    prev_first = prev_last.replace(day=1)
-    last = date(year, mon, calendar.monthrange(year, mon)[1])
+    start_day = get_start_day(db)
+    key = month or current_period(start_day)
+    first, last = period_bounds(key, start_day)
+    prev_key = period_key(first - timedelta(days=1), start_day)
+    prev_first, prev_last = period_bounds(prev_key, start_day)
 
     filter_ids = _scoped_ids(db, user, account_ids)
     transfer_like_ids = {cid for (cid,) in db.query(Category.id)
@@ -394,29 +408,35 @@ def cumulative(month: str | None = None, account_ids: list[int] | None = Query(N
                    Transaction.booking_date <= last)
            .all())
 
-    per_day_current: dict[int, Decimal] = defaultdict(Decimal)
-    per_day_previous: dict[int, Decimal] = defaultdict(Decimal)
+    # Index = Tag seit Beginn des Abrechnungsmonats, damit sich beide Zeiträume
+    # auch bei verschobenem Starttag und ungleicher Länge vergleichen lassen.
+    per_offset_current: dict[int, Decimal] = defaultdict(Decimal)
+    per_offset_previous: dict[int, Decimal] = defaultdict(Decimal)
     for t in txs:
         spend = sum((amount for _cid, amount in _spend_parts(t, transfer_like_ids)), Decimal("0"))
         if not spend:
             continue
         if first <= t.booking_date <= last:
-            per_day_current[t.booking_date.day] += spend
+            per_offset_current[(t.booking_date - first).days] += spend
         elif prev_first <= t.booking_date <= prev_last:
-            per_day_previous[t.booking_date.day] += spend
+            per_offset_previous[(t.booking_date - prev_first).days] += spend
 
-    days = list(range(1, calendar.monthrange(year, mon)[1] + 1))
+    length = (last - first).days + 1
+    # Beschriftung mit dem echten Tag im Monat: bei Starttag 27 läuft die
+    # Achse 27, 28, …, 1, 2, … statt bei 1 zu beginnen
+    days = [(first + timedelta(days=i)).day for i in range(length)]
     current, previous = [], []
     run_c = run_p = Decimal("0")
-    for d in days:
-        run_c += per_day_current.get(d, Decimal("0"))
-        run_p += per_day_previous.get(d, Decimal("0"))
-        # laufender Monat endet am heutigen Tag, sonst fiele die Linie flach aus
-        current.append(float(run_c) if not (year == today.year and mon == today.month and d > today.day) else None)
+    for i in range(length):
+        run_c += per_offset_current.get(i, Decimal("0"))
+        run_p += per_offset_previous.get(i, Decimal("0"))
+        # laufender Zeitraum endet heute, sonst liefe die Linie flach weiter
+        in_future = first + timedelta(days=i) > today
+        current.append(None if in_future else float(run_c))
         previous.append(float(run_p))
 
-    return CumulativeOut(month=f"{year:04d}-{mon:02d}",
-                         previous_month=prev_first.strftime("%Y-%m"),
+    return CumulativeOut(month=key, previous_month=prev_key,
+                         date_from=first, date_to=last,
                          days=days, current=current, previous=previous)
 
 
@@ -430,7 +450,8 @@ def category_trend(date_from: date | None = None, date_to: date | None = None,
         date_to = date.today()
     if date_from is None:
         date_from = (date_to.replace(day=1) - timedelta(days=334)).replace(day=1)
-    months = _month_range(date_from, date_to)
+    start_day = get_start_day(db)
+    months = period_range(date_from, date_to, start_day)
 
     filter_ids = _scoped_ids(db, user, account_ids)
     all_categories = {c.id: c for c in db.query(Category).all()}
@@ -444,7 +465,7 @@ def category_trend(date_from: date | None = None, date_to: date | None = None,
     per: dict[tuple[int | None, str], Decimal] = defaultdict(Decimal)
     totals: dict[int | None, Decimal] = defaultdict(Decimal)
     for t in txs:
-        m = t.booking_date.strftime("%Y-%m")
+        m = effective_period(t, start_day)
         if m not in months:
             continue
         for cid, amount in _spend_parts(t, transfer_like_ids):
