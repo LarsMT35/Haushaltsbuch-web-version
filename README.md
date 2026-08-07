@@ -433,6 +433,20 @@ automatisch aus.
   vergleicht die Zahlen beider Kacheln direkt miteinander, mit und ohne
   Zielkonto.
 
+### v1.8.2 – Sparkonto-Erkennung: sichtbar statt still
+
+- ✅ **Warnung bei falschem Zielkonto.** Zeigt eine Kategorie „wie Umbuchung
+  behandeln“ auf ein **Giro**- statt ein Sparkonto, zählt das Geld weder als
+  Ausgabe (weil Umbuchung) noch als Sparen (weil kein Sparkonto) – es
+  verschwand lautlos aus jeder Auswertung. Die Kategorienliste zeigt dafür
+  jetzt **⚠ zählt nicht als Sparen** samt Erklärung und Lösungsweg.
+  Als Sparkonto gelten die Typen **Tagesgeld, Sparbuch und Depot**.
+- ✅ **Archivierte Sparkonten zählen weiter.** Nach dem Archivieren fiel eine
+  Sparbuchung aus den Kennzahlen heraus, während die Sparquote sie weiter
+  zählte – Archivieren schrieb damit die Historie um. Buchungen werden jetzt
+  unabhängig vom Archivstatus eingeordnet; nur aus Saldenliste und
+  Gesamtvermögen bleiben stillgelegte Konten draußen.
+
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).
 

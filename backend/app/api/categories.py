@@ -36,7 +36,23 @@ def list_categories(include_inactive: bool = False,
     q = visible_categories_query(db, user)
     if not include_inactive:
         q = q.filter(Category.active.is_(True))
-    return q.order_by(Category.name).all()
+    rows = q.order_by(Category.name).all()
+
+    # Typ des Zielkontos mitgeben, damit die Oberfläche auf eine stille Falle
+    # hinweisen kann: zeigt eine "wie Umbuchung"-Kategorie auf ein Girokonto
+    # statt auf ein Sparkonto, zählt das Geld weder als Ausgabe noch als
+    # Sparen – es verschwindet aus jeder Auswertung.
+    ziel_ids = {c.transfer_target_account_id for c in rows if c.transfer_target_account_id}
+    ziele = {a.id: a for a in db.query(Account).filter(Account.id.in_(ziel_ids)).all()} if ziel_ids else {}
+    out = []
+    for c in rows:
+        item = CategoryOut.model_validate(c)
+        ziel = ziele.get(c.transfer_target_account_id)
+        if ziel is not None:
+            item.transfer_target_type = ziel.type
+            item.transfer_target_name = ziel.name
+        out.append(item)
+    return out
 
 
 @router.post("", response_model=CategoryOut)

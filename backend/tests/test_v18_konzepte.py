@@ -217,3 +217,62 @@ def test_savings_delta_does_not_double_count_both_sides(client, auth_headers):
     # und der Depot-Saldo ist tatsaechlich gewachsen
     depot_row = next(a for a in kpi["accounts"] if a["account_id"] == depot["id"])
     assert depot_row["balance"] == 300.0
+
+
+# ------------------- Sparkonto-Erkennung: Kontotyp und Archivierung (v1.8.2)
+
+def test_archived_savings_account_still_counts_as_saving(client, auth_headers):
+    """Archivieren blendet ein Konto aus, loescht aber nichts. Frueher fiel eine
+    Sparbuchung damit aus den Kennzahlen heraus (die Sparquote zaehlte sie
+    weiter) - Archivieren haette die Historie umgeschrieben."""
+    h = auth_headers
+    giro = _acc(client, h, "V182-Giro", opening_balance="5000",
+                opening_balance_date="2026-01-01")
+    depot = _acc(client, h, "V182-Depot", typ="depot", opening_balance="0",
+                 opening_balance_date="2026-01-01")
+    cat = client.post("/api/v1/categories", headers=h, json={
+        "name": "V182-Sparplan", "scope": "personal", "is_transfer_like": True,
+        "transfer_target_account_id": depot["id"]}).json()
+    _tx(client, h, giro, "2026-11-05", "-300.00", "Sparplan", cat=cat["id"])
+
+    p = {"date_from": "2026-11-01", "date_to": "2026-11-30",
+         "account_ids": [giro["id"], depot["id"]]}
+    vorher = client.get("/api/v1/dashboard/summary", headers=h, params=p).json()
+    assert sum(m["value"] for m in vorher["savings_movement"]) == 300.0
+
+    client.delete(f"/api/v1/accounts/{depot['id']}", headers=h)      # archivieren
+
+    nachher = client.get("/api/v1/dashboard/summary", headers=h, params=p).json()
+    sq = client.get("/api/v1/dashboard/savings-rate", headers=h, params=p).json()
+    assert sum(m["value"] for m in nachher["savings_movement"]) == 300.0
+    assert sum(sq["saved"]) == 300.0            # beide Kacheln weiterhin einig
+    # das archivierte Konto taucht aber nicht mehr in der Saldenliste auf
+    assert depot["id"] not in [a["account_id"] for a in nachher["accounts"]]
+
+
+def test_non_savings_target_account_is_flagged(client, auth_headers):
+    """Zeigt eine "wie Umbuchung"-Kategorie auf ein Girokonto statt auf ein
+    Sparkonto, zaehlt das Geld weder als Ausgabe noch als Sparen - es
+    verschwindet lautlos. Die Kategorienliste muss das kenntlich machen
+    koennen, also den Typ des Zielkontos mitliefern."""
+    h = auth_headers
+    giro = _acc(client, h, "V182-Ziel-Giro", opening_balance="5000",
+                opening_balance_date="2026-01-01")
+    falsch = _acc(client, h, "V182-Depot-falsch-angelegt", typ="giro",
+                  opening_balance="0", opening_balance_date="2026-01-01")
+    cat = client.post("/api/v1/categories", headers=h, json={
+        "name": "V182-Aktien", "scope": "personal", "is_transfer_like": True,
+        "transfer_target_account_id": falsch["id"]}).json()
+    _tx(client, h, giro, "2026-12-05", "-400.00", "Sparplan", cat=cat["id"])
+
+    zeile = next(c for c in client.get("/api/v1/categories", headers=h).json()
+                 if c["id"] == cat["id"])
+    assert zeile["transfer_target_type"] == "giro"          # -> Oberflaeche warnt
+    assert zeile["transfer_target_name"] == "V182-Depot-falsch-angelegt"
+
+    # ... und genau das ist der Effekt: nichts zaehlt als Sparen
+    s = client.get("/api/v1/dashboard/summary", headers=h, params={
+        "date_from": "2026-12-01", "date_to": "2026-12-31",
+        "account_ids": [giro["id"], falsch["id"]]}).json()
+    assert sum(m["value"] for m in s["savings_movement"]) == 0.0
+    assert s["expenses"] == 0.0                             # als Umbuchung auch keine Ausgabe

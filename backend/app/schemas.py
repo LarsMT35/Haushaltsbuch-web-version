@@ -121,6 +121,11 @@ class CategoryOut(ORMModel):
     is_transfer_like: bool
     transfer_target_account_id: int | None
     active: bool
+    # Typ des Umbuchungs-Zielkontos, damit die Oberfläche warnen kann: zeigt
+    # eine "wie Umbuchung"-Kategorie auf ein Giro- statt ein Sparkonto, zählt
+    # das Geld nirgends als Sparen – ohne Hinweis eine stille Falle.
+    transfer_target_type: str | None = None
+    transfer_target_name: str | None = None
 
 
 class CategoryCreate(BaseModel):

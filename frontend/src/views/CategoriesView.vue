@@ -90,6 +90,13 @@ async function setTransferTarget(cat, accountId) {
   } catch (e) { error.value = e.message }
 }
 
+// Kontotypen, die als Sparen zählen – identisch mit SAVINGS_TYPES im Backend
+const SPARKONTEN = ['tagesgeld', 'sparbuch', 'depot']
+function istKeinSparkonto(c) {
+  return c.is_transfer_like && c.transfer_target_type
+    && !SPARKONTEN.includes(c.transfer_target_type)
+}
+
 function accountName(id) {
   return accounts.value.find((a) => a.id === id)?.name || ''
 }
@@ -191,8 +198,16 @@ function parentName(id) {
               <span v-if="c.is_fixed_cost" class="badge">fix</span>
               <span v-if="c.is_transfer_like" class="badge gray" title="Zählt wie eine Umbuchung, nicht als Ausgabe">wie Umbuchung</span>
               <span v-if="c.transfer_target_account_id" class="badge gray"
-                    title="Gegenbuchung wird automatisch in dieses Konto eingetragen (Saldo-Wirkung), per 'Umbuchungen erkennen' anstoßbar">
+                    data-tip="Die Gegenbuchung wird automatisch in dieses Konto eingetragen, sein Saldo wächst also mit. Per „Umbuchungen erkennen“ jederzeit nachholbar.">
                 → {{ accountName(c.transfer_target_account_id) }}</span>
+              <!-- Stille Falle: zeigt eine "wie Umbuchung"-Kategorie auf ein
+                   Giro- statt ein Sparkonto, zählt das Geld weder als Ausgabe
+                   (weil Umbuchung) noch als Sparen (weil kein Sparkonto) – es
+                   verschwindet aus jeder Auswertung, ohne dass irgendwo etwas
+                   fehlt aussieht. -->
+              <span v-if="istKeinSparkonto(c)" class="badge warn"
+                    :data-tip="`Das Zielkonto „${c.transfer_target_name}“ ist vom Typ „${c.transfer_target_type}“ und gilt damit nicht als Sparkonto. Buchungen dieser Kategorie zählen weder als Ausgabe noch in Sparquote oder Sparkonten-Bewegung. Typ des Kontos auf Tagesgeld, Sparbuch oder Depot ändern, damit sie als Sparen zählen.`">
+                ⚠ zählt nicht als Sparen</span>
             </td>
             <td style="text-align: right; white-space: nowrap">
               <button @click="toggleFixed(c)">{{ c.is_fixed_cost ? 'fix ✕' : 'als fix markieren' }}</button>

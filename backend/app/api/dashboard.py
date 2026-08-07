@@ -141,9 +141,20 @@ def summary(date_from: date | None = None, date_to: date | None = None,
     # Salden folgen der Kontenauswahl: im Dashboard-Modus "Gemeinsam" muss das
     # Gesamtvermögen das des Haushalts sein, nicht das aller Konten (4.9.1).
     # account_roles wird für "geteilt?" gebraucht und deshalb gleich mitgeladen.
+    #
+    # Zwei verschiedene Mengen, bewusst getrennt:
+    #   `accounts`      – ALLE Konten der Auswahl, auch archivierte. Zum
+    #                     Einordnen einer Buchung (Sparkonto? Schuldkonto?)
+    #                     muss das Konto auffindbar sein, sonst zählte eine
+    #                     Sparbuchung nach dem Archivieren des Kontos plötzlich
+    #                     nicht mehr – Archivieren würde die Historie umschreiben.
+    #   `aktive_konten` – ohne archivierte, für die Saldenliste und das
+    #                     Gesamtvermögen: dort haben stillgelegte Konten
+    #                     nichts verloren.
     accounts = {a.id: a for a in db.query(Account)
                 .options(selectinload(Account.account_roles))
-                .filter(Account.id.in_(filter_ids), Account.archived.is_(False)).all()}
+                .filter(Account.id.in_(filter_ids)).all()}
+    aktive_konten = {aid: a for aid, a in accounts.items() if not a.archived}
     categories = {c.id: c for c in db.query(Category).all()}
 
     start_day = get_start_day(db, user)
@@ -198,8 +209,8 @@ def summary(date_from: date | None = None, date_to: date | None = None,
     total = Decimal("0")
     assets = Decimal("0")
     liabilities = Decimal("0")
-    booked = _summed_amounts(db, list(accounts))
-    for a in accounts.values():
+    booked = _summed_amounts(db, list(aktive_konten))
+    for a in aktive_konten.values():
         bal = (a.opening_balance or Decimal("0")) + booked.get(a.id, Decimal("0"))
         total += bal
         # Eine Kreditkarte im Minus ist eine Schuld, kein negatives Guthaben –
