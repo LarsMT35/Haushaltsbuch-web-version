@@ -92,7 +92,35 @@ def _summed_amounts(db: Session, account_ids: list[int], *,
     return {aid: _dec(total) for aid, total in q.group_by(Transaction.account_id).all()}
 
 
-def savings_delta(t, acc, cat) -> Decimal:
+def _savings_partner_map(db: Session, txs: list[Transaction]) -> dict[int, bool]:
+    """Fuer jede Buchung mit transfer_id: hat die verknuepfte Gegenbuchung
+    (anderes Konto, gleiche Umbuchung) ein Sparkonto als Konto?
+
+    Nur mit dem Zielkonto einer Kategorie (transfer_target_account_id) war das
+    bereits erkennbar; per "Umbuchungen erkennen" oder von Hand verknuepfte
+    Umbuchungen (z.B. eine Rueckbuchung vom Tagesgeld aufs Girokonto, beide
+    Seiten mit derselben Kategorie versehen) hatten dieses Signal nicht und
+    zaehlten dadurch doppelt (siehe savings_delta).
+    """
+    transfer_ids = {t.transfer_id for t in txs if t.transfer_id}
+    if not transfer_ids:
+        return {}
+    legs: dict[int, list[tuple[int, str]]] = defaultdict(list)
+    rows = (db.query(Transaction.transfer_id, Transaction.account_id, Account.type)
+            .join(Account, Account.id == Transaction.account_id)
+            .filter(Transaction.transfer_id.in_(transfer_ids)).all())
+    for tid, aid, atype in rows:
+        legs[tid].append((aid, atype))
+    result = {}
+    for t in txs:
+        if not t.transfer_id:
+            continue
+        result[t.id] = any(atype in SAVINGS_TYPES for aid, atype in legs.get(t.transfer_id, [])
+                            if aid != t.account_id)
+    return result
+
+
+def savings_delta(t, acc, cat, partner_is_savings: bool = False) -> Decimal:
     """Wie viel dieser Buchung als Sparen zaehlt – EINE Regel fuer alle Kacheln.
 
     Es gibt zwei voellig verschiedene Faelle, die frueher versehentlich mit
@@ -113,10 +141,20 @@ def savings_delta(t, acc, cat) -> Decimal:
 
     Hat die Kategorie ein echtes Zielkonto (v1.3b), zaehlt ausschliesslich die
     Zielkonto-Seite ueber Fall 1 – sonst hoeben sich zahlende und empfangende
-    Seite gegenseitig auf.
+    Seite gegenseitig auf. Dasselbe gilt, wenn die Buchung ueber eine echte
+    Umbuchung (transfer_id, z.B. per "Umbuchungen erkennen" oder von Hand
+    verknuepft) mit einer Buchung auf einem Sparkonto zusammenhaengt, OHNE
+    dass die Kategorie ein Zielkonto hinterlegt hat: `partner_is_savings`
+    zeigt das an. Sonst wuerde Fall 1 auf der Sparkonto-Seite UND Fall 2 auf
+    der zahlenden Seite gleichzeitig greifen und dieselbe Bewegung doppelt
+    zaehlen, statt sich (wie beabsichtigt) gegenseitig aufzuheben – z.B. eine
+    manuell mit derselben "Sparbetrag"-Kategorie versehene Rueckbuchung vom
+    Sparkonto aufs Girokonto zaehlte dann zweimal als "weniger gespart".
     """
     if acc is not None and acc.type in SAVINGS_TYPES:
         return t.amount_ref
+    if partner_is_savings:
+        return Decimal("0")
     if cat is not None and cat.is_transfer_like and not cat.transfer_target_account_id:
         return -t.amount_ref
     return Decimal("0")
@@ -166,6 +204,7 @@ def summary(date_from: date | None = None, date_to: date | None = None,
     if category_ids:
         cat_id_set = set(category_ids)
         txs = [t for t in txs if t.category_id in cat_id_set]
+    savings_partner = _savings_partner_map(db, txs)
 
     income = Decimal("0")
     expenses = Decimal("0")
@@ -184,7 +223,7 @@ def summary(date_from: date | None = None, date_to: date | None = None,
         if t.transfer_id or (cat and cat.is_transfer_like):
             # Echte Umbuchung ODER Kategorie "wie Umbuchung behandeln":
             # nicht in Einnahmen/Ausgaben, aber Sparkonten-Bewegung (4.9).
-            savings[month] += savings_delta(t, acc, cat)
+            savings[month] += savings_delta(t, acc, cat, savings_partner.get(t.id, False))
             continue
         if t.amount_ref >= 0:
             income += t.amount_ref
@@ -202,7 +241,7 @@ def summary(date_from: date | None = None, date_to: date | None = None,
         fixed[key] += abs(t.amount_ref)
         if t.category_id is None and not t.splits:
             unassigned += 1
-        savings[month] += savings_delta(t, acc, cat)
+        savings[month] += savings_delta(t, acc, cat, savings_partner.get(t.id, False))
 
     months = sorted(set(list(monthly_in) + list(monthly_out) + list(savings)))
     balances = []
@@ -341,6 +380,7 @@ def savings_rate(date_from: date | None = None, date_to: date | None = None,
            .filter(Transaction.account_id.in_(filter_ids),
                    range_condition(date_from, date_to, start_day)).all()
            if in_selected_range(t, date_from, date_to, start_day, covered)]
+    savings_partner = _savings_partner_map(db, txs)
     inc = {m: Decimal("0") for m in months}
     out = {m: Decimal("0") for m in months}
     saved = {m: Decimal("0") for m in months}
@@ -351,7 +391,7 @@ def savings_rate(date_from: date | None = None, date_to: date | None = None,
             continue
         acc = accounts.get(t.account_id)
         cat = categories.get(t.category_id) if t.category_id else None
-        saved[m] += savings_delta(t, acc, cat)
+        saved[m] += savings_delta(t, acc, cat, savings_partner.get(t.id, False))
         if acc is not None and acc.type in SAVINGS_TYPES:
             # Was /dashboard/summary hier als Einnahme zählen würde (z.B.
             # Zinsen): getrennt mitführen, damit sich `income` daraus

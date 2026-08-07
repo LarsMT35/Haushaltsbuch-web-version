@@ -276,3 +276,51 @@ def test_non_savings_target_account_is_flagged(client, auth_headers):
         "account_ids": [giro["id"], falsch["id"]]}).json()
     assert sum(m["value"] for m in s["savings_movement"]) == 0.0
     assert s["expenses"] == 0.0                             # als Umbuchung auch keine Ausgabe
+
+
+# --------- Ruecktransfer vom Sparkonto zaehlt nicht doppelt (v1.8.3) --------
+
+def test_transfer_back_to_giro_not_double_counted(client, auth_headers):
+    """Gemeldet: das Girokonto in die Kontenauswahl aufzunehmen aendert die
+    Sparquote/Kennzahlen - obwohl es dieselben Buchungen sind.
+
+    Nachgestellt mit genau dem gemeldeten Muster: eine manuell mit "wie
+    Umbuchung behandeln" (OHNE Zielkonto) versehene Kategorie wird auf BEIDEN
+    Seiten einer echten Umbuchung verwendet - Ruckzahlung 400 EUR vom
+    Sparkonto (Sichteinlagen, Typ tagesgeld) aufs Girokonto, als Umbuchung
+    verknuepft (z.B. per "Umbuchungen erkennen").
+
+    Vorher: Fall 1 (Sparkonto-Seite, -400) UND Fall 2 (Girokonto-Seite, per
+    Kategorie gedreht: -400) griffen gleichzeitig -> -800 statt -400, aber
+    NUR wenn das Girokonto mit in der Auswahl war. Ohne Girokonto in der
+    Auswahl zaehlte zufaellig nur die richtige Haelfte (-400) - der Wert
+    schwankte je nach Kontenfilter, obwohl sich an den Buchungen nichts
+    aendert."""
+    h = auth_headers
+    giro = _acc(client, h, "V183-Giro", opening_balance="5000",
+                opening_balance_date="2026-01-01")
+    sicht = _acc(client, h, "V183-Sichteinlagen", typ="tagesgeld",
+                 opening_balance="1000", opening_balance_date="2026-01-01")
+    cat = client.post("/api/v1/categories", headers=h, json={
+        "name": "V183-Sparbetrag", "scope": "personal", "is_transfer_like": True,
+        "transfer_target_account_id": None}).json()
+    a = _tx(client, h, giro, "2026-07-27", "400.00", "Lars Johanshon", cat=cat["id"])
+    b = _tx(client, h, sicht, "2026-07-25", "-400.00", "Johanshon Lars", cat=cat["id"])
+    client.post("/api/v1/transfers/link", headers=h,
+                json={"transaction_id_a": a["id"], "transaction_id_b": b["id"]})
+
+    ohne_giro = {"date_from": "2026-07-01", "date_to": "2026-07-31",
+                 "account_ids": [sicht["id"]]}
+    mit_giro = {"date_from": "2026-07-01", "date_to": "2026-07-31",
+                "account_ids": [giro["id"], sicht["id"]]}
+
+    s_ohne = client.get("/api/v1/dashboard/summary", headers=h, params=ohne_giro).json()
+    s_mit = client.get("/api/v1/dashboard/summary", headers=h, params=mit_giro).json()
+    q_mit = client.get("/api/v1/dashboard/savings-rate", headers=h, params=mit_giro).json()
+
+    bewegung_ohne = sum(m["value"] for m in s_ohne["savings_movement"])
+    bewegung_mit = sum(m["value"] for m in s_mit["savings_movement"])
+    assert bewegung_ohne == -400.0
+    assert bewegung_mit == bewegung_ohne, "Kontenfilter darf dieselbe Umbuchung nicht anders zaehlen"
+    i = q_mit["months"].index("2026-07")
+    assert q_mit["saved"][i] == -400.0

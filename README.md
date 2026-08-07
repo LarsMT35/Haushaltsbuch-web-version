@@ -447,6 +447,31 @@ automatisch aus.
   unabhängig vom Archivstatus eingeordnet; nur aus Saldenliste und
   Gesamtvermögen bleiben stillgelegte Konten draußen.
 
+### v1.8.3 – Rücküberweisung aufs Girokonto zählte doppelt
+
+- ✅ **Gemeldet**: die Kennzahlen änderten sich, sobald das Girokonto mit in
+  die Kontenauswahl kam – bei sonst unveränderten Buchungen.
+- ✅ **Ursache**: eine Kategorie „wie Umbuchung behandeln“ **ohne**
+  Zielkonto, auf **beiden Seiten** einer echten (verknüpften) Umbuchung
+  verwendet – z. B. eine Rücküberweisung vom Sparkonto aufs Girokonto, beide
+  Buchungen mit derselben Kategorie „Sparbetrag“ versehen. Die Sparkonto-Seite
+  zählte über ihren Kontotyp (−400 €), die Girokonto-Seite zusätzlich über
+  die Kategorie (nochmal −400 €) – macht −800 € statt −400 €, aber nur wenn
+  das Girokonto in der Auswahl war; sonst blieb zufällig nur die richtige
+  Hälfte übrig. Derselbe Fehler wie in v1.8.1, nur eine Ausprägung, die dort
+  nicht abgedeckt war: **verknüpfte** Umbuchungen ohne Kategorie-Zielkonto.
+- ✅ **Fix**: `savings_delta()` erkennt jetzt auch die per `transfer_id`
+  verknüpfte Gegenseite (nicht nur das Kategorie-Zielkonto) und zählt eine
+  Buchung nicht mehr zusätzlich, wenn ihre Gegenbuchung bereits über ein
+  Sparkonto erfasst ist. Ein Test bildet genau das gemeldete Muster nach und
+  prüft, dass die Kontenauswahl das Ergebnis nicht mehr verändert.
+- ⚠️ **Wichtig für Bestandsdaten**: das greift nur bei **verknüpften**
+  Umbuchungen (`transfer_id`). Zwei unabhängig erfasste Buchungen mit
+  derselben Kategorie, aber ohne Verknüpfung, kann das System nicht als
+  zusammengehörig erkennen und zählt weiterhin beide Seiten einzeln. Über
+  „Umbuchungen erkennen“ in der Buchungsliste (oder manuell verknüpfen)
+  lassen sich solche Paare nachträglich zusammenführen.
+
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).
 
