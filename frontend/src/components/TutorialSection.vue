@@ -122,6 +122,7 @@ const TILE_DOCS = [
     kurz: 'Wie viel ist je Monat netto auf die Sparkonten geflossen?',
     text: [
       'Netto heißt: Umbuchungen in beide Richtungen zählen. 200 € aufs Tagesgeld und später 50 € zurück ergeben 150 € – nicht 200.',
+      'Ein Sparplan zählt positiv, auch wenn die Buchung auf dem Girokonto negativ ist: 250 € in einen Sparplan sind 250 € gespart. Es ist dieselbe Zahl, die in den Kennzahlen als „Umbuchungen (Sparkonten)“ steht.',
       'Ein negativer Balken bedeutet, dass in dem Monat unterm Strich Geld vom Sparkonto zurückgeholt wurde.',
     ] },
   { id: 'networth', name: 'Vermögensverlauf', art: 'linie',

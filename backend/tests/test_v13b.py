@@ -29,9 +29,14 @@ def test_transfer_like_category_excluded_from_income_expense(client, auth_header
         "date_from": "2026-07-01", "date_to": "2026-07-31", "account_ids": [giro["id"]]}).json()
     # nur die normale Ausgabe zählt als Ausgabe, nicht die Sparplan-Buchung
     assert s["expenses"] == 30.0
-    # dafür zählt sie als Sparkonten-Bewegung
+    # dafür zählt sie als Sparkonten-Bewegung – und zwar POSITIV: 100 EUR in
+    # einen Sparplan sind 100 EUR gespart. Der Betrag der Buchung ist negativ
+    # (das Geld verlässt das Girokonto), die Bedeutung ist die umgekehrte.
+    # Bis v1.8 stand hier -100: die Kennzahlen-Kachel drehte das Vorzeichen
+    # nicht, die Sparquote schon – dieselbe Buchung erschien in zwei Kacheln
+    # mit entgegengesetztem Vorzeichen (siehe savings_delta).
     july = next(m for m in s["savings_movement"] if m["month"] == "2026-07")
-    assert july["value"] == -100.0
+    assert july["value"] == 100.0
     # und taucht NICHT in "Ausgaben nach Kategorie" auf
     assert not any(c["category_name"] == "V13b-Aktien" for c in s["by_category"])
 

@@ -418,6 +418,21 @@ automatisch aus.
 - ✅ **Jede Kachel nennt ihren Zeitraum** in der Überschrift – so ist ablesbar,
   warum manche Kacheln auf den Filter reagieren und andere nicht.
 
+### v1.8.1 – Sparbewegung: eine Regel statt zweier Kopien
+
+- ✅ **Kennzahlen und Sparquote zeigten dieselbe Buchung mit umgekehrtem
+  Vorzeichen.** Bei einer Kategorie „wie Umbuchung behandeln“ **ohne**
+  hinterlegtes Zielkonto (z. B. ein Sparplan ohne mitgeführtes Depot) stand
+  ein Sparbetrag von 250 € in den Kennzahlen als **−250 €** und in der
+  Sparquote als **+250 €**. Richtig ist positiv: 250 € in einen Sparplan sind
+  250 € gespart – der Buchungsbetrag ist negativ, weil das Geld das Girokonto
+  verlässt, die Bedeutung ist die umgekehrte.
+- ✅ **Ursache war doppelter Code**: beide Kacheln hatten je eine eigene Kopie
+  derselben Regel, und nur eine davon drehte das Vorzeichen. Die Regel steht
+  jetzt einmal in `savings_delta()` und wird von beiden benutzt – ein Test
+  vergleicht die Zahlen beider Kacheln direkt miteinander, mit und ohne
+  Zielkonto.
+
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).
 

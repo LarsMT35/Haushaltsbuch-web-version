@@ -92,6 +92,36 @@ def _summed_amounts(db: Session, account_ids: list[int], *,
     return {aid: _dec(total) for aid, total in q.group_by(Transaction.account_id).all()}
 
 
+def savings_delta(t, acc, cat) -> Decimal:
+    """Wie viel dieser Buchung als Sparen zaehlt – EINE Regel fuer alle Kacheln.
+
+    Es gibt zwei voellig verschiedene Faelle, die frueher versehentlich mit
+    demselben Vorzeichen verrechnet wurden:
+
+    1. Die Buchung liegt AUF einem Sparkonto. Dann ist ihr Betrag bereits die
+       Veraenderung des Sparguthabens: Zugang positiv, Rueckbuchung negativ.
+
+    2. Die Buchung liegt auf dem ZAHLENDEN Konto und traegt eine Kategorie
+       "wie Umbuchung behandeln" OHNE hinterlegtes Zielkonto (v1.3-Variante,
+       z.B. ein Sparplan ohne mitgefuehrtes Depot). Ihr Betrag ist negativ –
+       das Geld verlaesst das Girokonto – bedeutet aber Sparen. Hier gehoert
+       das Vorzeichen gedreht.
+
+    Kennzahlen und Sparquote hatten je eine eigene Kopie dieser Regel, und in
+    Fall 2 drehte nur eine davon das Vorzeichen: dieselbe Buchung stand als
+    -250 EUR in der einen und als +250 EUR in der anderen Kachel.
+
+    Hat die Kategorie ein echtes Zielkonto (v1.3b), zaehlt ausschliesslich die
+    Zielkonto-Seite ueber Fall 1 – sonst hoeben sich zahlende und empfangende
+    Seite gegenseitig auf.
+    """
+    if acc is not None and acc.type in SAVINGS_TYPES:
+        return t.amount_ref
+    if cat is not None and cat.is_transfer_like and not cat.transfer_target_account_id:
+        return -t.amount_ref
+    return Decimal("0")
+
+
 @router.get("/summary", response_model=DashboardSummary)
 def summary(date_from: date | None = None, date_to: date | None = None,
             account_ids: list[int] | None = Query(None),
@@ -141,18 +171,9 @@ def summary(date_from: date | None = None, date_to: date | None = None,
         acc = accounts.get(t.account_id)
         cat = categories.get(t.category_id) if t.category_id else None
         if t.transfer_id or (cat and cat.is_transfer_like):
-            # Echte Umbuchung ODER Kategorie "wie Umbuchung behandeln" (z.B.
-            # Sparplan-Ausführung): nicht in Einnahmen/Ausgaben, aber
-            # Sparkonten-Bewegung (4.9). Hat die Kategorie ein echtes
-            # Umbuchungs-Zielkonto hinterlegt (z.B. Depot, per
-            # "Umbuchungen erkennen" bereits gegengebucht), zählt nur noch
-            # die Zielkonto-Seite (acc.type in SAVINGS_TYPES) – sonst würde
-            # die zahlende UND die Depot-Seite gegeneinander aufheben.
-            # Ohne Zielkonto (alte Variante ohne Gegenbuchung) bleibt die
-            # zahlende Seite selbst der einzige verfügbare Beleg.
-            if (acc and acc.type in SAVINGS_TYPES) or (
-                    cat and cat.is_transfer_like and not cat.transfer_target_account_id):
-                savings[month] += t.amount_ref
+            # Echte Umbuchung ODER Kategorie "wie Umbuchung behandeln":
+            # nicht in Einnahmen/Ausgaben, aber Sparkonten-Bewegung (4.9).
+            savings[month] += savings_delta(t, acc, cat)
             continue
         if t.amount_ref >= 0:
             income += t.amount_ref
@@ -170,8 +191,7 @@ def summary(date_from: date | None = None, date_to: date | None = None,
         fixed[key] += abs(t.amount_ref)
         if t.category_id is None and not t.splits:
             unassigned += 1
-        if acc and acc.type in SAVINGS_TYPES:
-            savings[month] += t.amount_ref
+        savings[month] += savings_delta(t, acc, cat)
 
     months = sorted(set(list(monthly_in) + list(monthly_out) + list(savings)))
     balances = []
@@ -320,27 +340,17 @@ def savings_rate(date_from: date | None = None, date_to: date | None = None,
             continue
         acc = accounts.get(t.account_id)
         cat = categories.get(t.category_id) if t.category_id else None
+        saved[m] += savings_delta(t, acc, cat)
         if acc is not None and acc.type in SAVINGS_TYPES:
-            # Sparkonto-Seite: Zugang zählt positiv, Rückbuchung negativ
-            saved[m] += t.amount_ref
             # Was /dashboard/summary hier als Einnahme zählen würde (z.B.
-            # Zinsen): getrennt mitführen, damit sich income_total daraus
+            # Zinsen): getrennt mitführen, damit sich `income` daraus
             # rekonstruieren lässt, ohne die Quote zu verfälschen.
             if (not t.transfer_id and not (cat and cat.is_transfer_like)
                     and t.amount_ref >= 0):
                 saved_in[m] += t.amount_ref
             # ... und NICHT zusätzlich in die Bezugsgröße: derselbe Euro wäre
-            # sonst gleichzeitig der Zähler und Teil des Nenners. Ein noch
-            # nicht verknüpfter Übertrag aufs Tagesgeld trieb die Quote so
-            # künstlich Richtung 100 % und darüber hinaus. Zinsen auf dem
-            # Sparkonto zählen hier deshalb als Gespartes, nicht als
-            # Einkommen – in /dashboard/summary bleiben sie Einnahme, dort
-            # ist danach gefragt.
+            # sonst gleichzeitig der Zähler und Teil des Nenners.
             continue
-        if cat is not None and cat.is_transfer_like and not cat.transfer_target_account_id:
-            # Sparplan ohne mitgeführtes Zielkonto: die Abbuchung auf der
-            # zahlenden Seite IST der Sparbetrag, daher Vorzeichen drehen
-            saved[m] += -t.amount_ref
         if t.transfer_id or t.category_id in transfer_like_ids:
             continue  # Umbuchungen sind weder Einnahme noch Ausgabe
         if t.amount_ref >= 0:

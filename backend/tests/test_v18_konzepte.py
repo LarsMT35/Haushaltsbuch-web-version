@@ -157,3 +157,63 @@ def test_outliers_use_median_and_need_enough_history(client, auth_headers):
     assert row["median"] == 50.0
     assert row["amount"] == 600.0
     assert row["factor"] == 12.0
+
+
+# ----------------------------- Sparbewegung: EINE Regel für alle Kacheln
+
+@pytest.mark.parametrize("mit_zielkonto", [True, False])
+def test_savings_movement_identical_in_kpi_and_rate(client, auth_headers, mit_zielkonto):
+    """Die Zahl "Umbuchungen (Sparkonten)" in den Kennzahlen und der Balken
+    "tatsaechlich gespart" in der Sparquote sind dieselbe Groesse - sie
+    muessen fuer denselben Zeitraum denselben Wert liefern.
+
+    Ohne hinterlegtes Zielkonto drehte frueher nur EINE der beiden Kacheln das
+    Vorzeichen: derselbe Sparplan stand als -250 EUR in den Kennzahlen und als
+    +250 EUR in der Sparquote.
+    """
+    h = auth_headers
+    suffix = "mit" if mit_zielkonto else "ohne"
+    giro = _acc(client, h, f"V18-SD-Giro-{suffix}", opening_balance="5000",
+                opening_balance_date="2026-01-01")
+    depot = _acc(client, h, f"V18-SD-Depot-{suffix}", typ="depot",
+                 opening_balance="0", opening_balance_date="2026-01-01")
+    cat = client.post("/api/v1/categories", headers=h, json={
+        "name": f"V18-Sparplan-{suffix}", "scope": "personal", "is_transfer_like": True,
+        "transfer_target_account_id": depot["id"] if mit_zielkonto else None}).json()
+
+    _tx(client, h, giro, "2026-09-05", "4000.00", "Gehalt")
+    _tx(client, h, giro, "2026-09-10", "-250.00", "Sparplan", cat=cat["id"])
+
+    p = {"date_from": "2026-09-01", "date_to": "2026-09-30",
+         "account_ids": [giro["id"], depot["id"]]}
+    kpi = client.get("/api/v1/dashboard/summary", headers=h, params=p).json()
+    sq = client.get("/api/v1/dashboard/savings-rate", headers=h, params=p).json()
+    i = sq["months"].index("2026-09")
+
+    bewegung = sum(m["value"] for m in kpi["savings_movement"])
+    assert bewegung == sq["saved"][i], "Kennzahlen und Sparquote widersprechen sich"
+    # 250 EUR in einen Sparplan sind 250 EUR gespart – positiv, in beiden Faellen
+    assert bewegung == 250.0
+
+
+def test_savings_delta_does_not_double_count_both_sides(client, auth_headers):
+    """Mit Zielkonto entsteht eine Gegenbuchung im Depot. Zahlende und
+    empfangende Seite duerfen sich weder aufheben noch verdoppeln."""
+    h = auth_headers
+    giro = _acc(client, h, "V18-Doppel-Giro", opening_balance="5000",
+                opening_balance_date="2026-01-01")
+    depot = _acc(client, h, "V18-Doppel-Depot", typ="depot",
+                 opening_balance="0", opening_balance_date="2026-01-01")
+    cat = client.post("/api/v1/categories", headers=h, json={
+        "name": "V18-Doppel-Sparplan", "scope": "personal", "is_transfer_like": True,
+        "transfer_target_account_id": depot["id"]}).json()
+    _tx(client, h, giro, "2026-10-10", "-300.00", "Sparplan", cat=cat["id"])
+
+    p = {"date_from": "2026-10-01", "date_to": "2026-10-31",
+         "account_ids": [giro["id"], depot["id"]]}
+    kpi = client.get("/api/v1/dashboard/summary", headers=h, params=p).json()
+    bewegung = sum(m["value"] for m in kpi["savings_movement"])
+    assert bewegung == 300.0            # einmal, nicht 0 und nicht 600
+    # und der Depot-Saldo ist tatsaechlich gewachsen
+    depot_row = next(a for a in kpi["accounts"] if a["account_id"] == depot["id"])
+    assert depot_row["balance"] == 300.0
