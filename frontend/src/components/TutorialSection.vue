@@ -28,6 +28,35 @@ const TILE_DOCS = [
       'Unter jeder Zahl steht die Veränderung gegenüber dem gleich langen Zeitraum davor – eine einzelne Zahl wie „Ausgaben 2.345 €“ ist ohne Bezug nicht einzuordnen.',
       'Bestehen die Bewegungen nur aus Umbuchungen (typisch für ein Depot), erscheint zusätzlich „Umbuchungen (Sparkonten)“. Sonst stünden dort drei Nullen, obwohl Geld geflossen ist.',
     ] },
+  { id: 'forecast', name: 'Verfügbar bis Zahltag', art: 'zahl',
+    kurz: 'Wie viel bleibt bis zum Ende des laufenden Abrechnungsmonats?',
+    text: [
+      'Die einzige Kachel, die nach vorn schaut – alle übrigen sind Rückschau. Saldo der Zahlungskonten (Giro und Bargeld) minus die wiederkehrenden Kosten, die bis zum Periodenende noch abgebucht werden.',
+      'Sparkonten zählen bewusst nicht mit: das Geld dort ist nicht zum Ausgeben gedacht, sonst sähe jeder Monat üppig aus.',
+      'Variable Ausgaben werden ausdrücklich NICHT geschätzt. Eine geratene Zahl wäre schlechter als gar keine – hier steht nur, was sicher bekannt ist.',
+      '„Pro Tag" verteilt den freien Betrag gleichmäßig auf die Resttage. Eine Orientierung, keine Vorgabe.',
+    ] },
+  { id: 'allocation', name: 'Vermögensaufteilung', art: 'ampel',
+    kurz: 'Wo liegt das Geld gerade – Giro, Tagesgeld oder Depot?',
+    text: [
+      'Der Vermögensverlauf zeigt die Entwicklung, diese Kachel die Aufteilung zum heutigen Stand. Beantwortet die Frage, wie viel unverzinst auf dem Girokonto liegt.',
+      'Nur Guthaben werden aufgeteilt. Schulden (etwa eine Kreditkarte im Minus) gehören nicht in einen Anteilskreis und stehen als eigene Zahl darunter – im Gesamtvermögen sind sie bereits abgezogen.',
+    ] },
+  { id: 'income_sources', name: 'Einnahmen nach Quelle', art: 'ranking',
+    kurz: 'Woher kommt das Geld?',
+    text: [
+      'Für Ausgaben gab es fünf Auswertungen, für Einnahmen nur eine Summe. Diese Kachel gruppiert die Einnahmen nach Gegenpartei – bei den meisten dominiert ein Arbeitgeber, interessant sind die übrigen Prozente.',
+      'Umbuchungen zählen wie überall nicht mit. Taucht hier trotzdem ein eigenes Konto auf, ist eine Umbuchung noch nicht als solche erkannt – „Umbuchungen erkennen" in der Buchungsliste räumt das auf.',
+      'Ein Klick öffnet die Buchungen dieser Quelle.',
+    ] },
+  { id: 'outliers', name: 'Auffällige Buchungen', art: 'tabelle',
+    kurz: 'Welche Buchung war deutlich teurer als sonst bei diesem Empfänger?',
+    text: [
+      'Verglichen wird mit dem MEDIAN aller Buchungen desselben Empfängers, nicht mit dem Mittelwert: ein einzelner Ausreißer zieht den Mittelwert selbst nach oben und würde sich darin verstecken.',
+      'Als Vergleichsbasis dient die gesamte Historie, nicht nur der gewählte Zeitraum – in einem einzelnen Monat gibt es zu wenige Vergleichswerte, da wäre fast alles „ungewöhnlich".',
+      'Empfänger mit weniger als vier Buchungen bleiben außen vor. Bei zwei Werten ist „ungewöhnlich" keine sinnvolle Aussage.',
+      'Eine leere Kachel ist ein gutes Zeichen, kein Fehler.',
+    ] },
   { id: 'unassigned', name: 'Handlungsbedarf', art: 'zahl',
     kurz: 'Buchungen, die noch keiner Kategorie zugeordnet sind.',
     text: [
@@ -105,6 +134,7 @@ const TILE_DOCS = [
     kurz: 'Wie viel vom Einkommen landet tatsächlich auf den Sparkonten?',
     text: [
       'Voreingestellt in Euro: tatsächlich gespart, daneben das rechnerische Sparpotenzial (Einnahmen minus Ausgaben) und die Einnahmen. Der Abstand zwischen Gespartem und Potenzial ist Geld, das unverzinst auf dem Girokonto liegen geblieben ist.',
+      'Die gezeigten Einnahmen sind dieselbe Zahl wie in den Kennzahlen. Als Nenner der Prozentrechnung dienen sie allerdings ohne die Zugänge auf Sparkonten – die sind ja der Zähler, im Nenner stünde derselbe Euro ein zweites Mal.',
       'Der Regler schaltet auf Prozent um. Das eignet sich zum Vergleich von Monaten mit unterschiedlichem Einkommen – „300 %“ sagt aber nichts darüber, um wie viel Geld es geht, deshalb ist Euro die Voreinstellung.',
       'Eine Quote über 100 % heißt: es ging mehr auf die Sparkonten, als im selben Zeitraum hereinkam. Das Geld lag also schon da (umgeschichtetes Guthaben), oder das Gehalt fiel in eine andere Periode. Die Kachel schreibt solche Monate in Euro aus.',
       'Monate ohne Einnahmen bleiben in der Prozent-Ansicht leer – ohne Bezugsgröße gibt es keine Quote.',

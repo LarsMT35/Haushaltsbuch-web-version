@@ -370,6 +370,54 @@ automatisch aus.
   Herleitung steht in der Anleitung. Ein Link *„Was zeigen die Kacheln? →“*
   über dem Raster führt direkt dorthin und klappt den Abschnitt auf.
 
+### v1.8 – Konzepte begradigt, Vorausschau, Diagramme im Farbschema
+
+**Konzeptfehler behoben**
+
+- ✅ **„Einnahmen“ heißt überall dasselbe.** Kennzahlen und Sparquote zeigten
+  für denselben Zeitraum verschiedene Beträge (2.500 € vs. 2.000 €). Die
+  Sparquote weist jetzt beide Größen getrennt aus: `income` wie in den
+  Kennzahlen, dazu `income_base` als Nenner der Prozentrechnung (ohne
+  Sparzugänge – die sind ja der Zähler).
+- ✅ **Gespartes kann das Sparpotenzial nicht mehr definitorisch übersteigen** –
+  Überschuss und Potenzial rechnen mit derselben Einnahmengröße.
+- ✅ **Monatsverlauf bestimmt die Periode nicht mehr selbst.** Wie bei den
+  Budgets: `date_in_period` statt `"2026-08-30".slice(0,7)`, was bei
+  verschobenem Starttag den falschen Monat traf.
+- ✅ **Vergleichszeitraum kommt aus der Periodenregel.** Er wurde kalendarisch
+  geschätzt und lag um einen Tag daneben (26.06.–26.07. statt 27.06.–26.07.);
+  `/budgets/period/bounds` liefert die Vorperiode jetzt mit.
+- ✅ **Schulden getrennt ausgewiesen**: eine Kreditkarte im Minus ist eine
+  Schuld, kein negatives Guthaben. `assets_total` und `liabilities_total`
+  neben dem unveränderten Nettovermögen.
+
+**Neue Auswertungen**
+
+- ✅ **Verfügbar bis Zahltag**: Saldo der Zahlungskonten minus die bis zum
+  Periodenende noch anstehenden wiederkehrenden Abbuchungen, dazu ein Betrag
+  pro Resttag. Die einzige Kachel, die nach vorn schaut. Variable Ausgaben
+  werden bewusst **nicht** geschätzt – eine geratene Zahl wäre schlechter als
+  gar keine.
+- ✅ **Vermögensaufteilung**: wo das Geld gerade liegt (nur Guthaben; Schulden
+  stehen als eigene Zahl darunter).
+- ✅ **Einnahmen nach Quelle**: für Ausgaben gab es fünf Auswertungen, für
+  Einnahmen nur eine Summe.
+- ✅ **Auffällige Buchungen**: Ausgaben, die deutlich über dem **Median** beim
+  selben Empfänger liegen. Median statt Mittelwert, weil ein Ausreißer den
+  Mittelwert selbst nach oben zieht und sich darin versteckt.
+
+**Nutzerfreundlichkeit**
+
+- ✅ **Diagramme folgen dem Farbschema.** 25 fest verdrahtete Hex-Werte sind
+  raus; die Palette kommt aus CSS-Variablen je Schema, im Dark Mode
+  aufgehellt. Vorher blieben die Diagramme blau, während die Seite auf
+  „Beere“ oder „Kontrastreich“ umschaltete. Die Ampelfarben bleiben wie
+  bisher bewusst fest.
+- ✅ **Kuratierte Standardauswahl** statt aller Kacheln beim ersten Start
+  (8–10 je Bereich); der Rest steht oben als *+ Name* bereit.
+- ✅ **Jede Kachel nennt ihren Zeitraum** in der Überschrift – so ist ablesbar,
+  warum manche Kacheln auf den Filter reagieren und andere nicht.
+
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).
 

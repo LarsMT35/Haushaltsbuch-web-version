@@ -15,7 +15,9 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
 from ..deps import accessible_account_ids, get_current_user
-from ..models import Account, Category, DashboardLayout, Transaction, User
+from ..models import (Account, Category, DashboardLayout, RecurringItem,
+                      Transaction, User)
+from ..services.recurring import compute_status as compute_recurring_status
 from ..services.periods import (
     current_period,
     effective_period,
@@ -35,6 +37,12 @@ from ..schemas import (
     CounterpartyRow,
     CumulativeOut,
     DashboardSummary,
+    ForecastOut,
+    IncomeSourcesOut,
+    IncomeSourceRow,
+    OutlierRow,
+    OutliersOut,
+    UpcomingCharge,
     DepositorMonth,
     DepositsOut,
     LayoutOut,
@@ -50,6 +58,12 @@ from ..schemas import (
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 SAVINGS_TYPES = {"tagesgeld", "sparbuch", "depot"}
+# Kontotypen, deren negativer Saldo eine Schuld ist und kein Guthaben. Für das
+# Nettovermögen macht das keinen Unterschied (die Summe ist dieselbe), wohl
+# aber für die Aussage "so viel habe ich" vs. "so viel schulde ich noch".
+LIABILITY_TYPES = {"kreditkarte"}
+# Konten, aus denen der Alltag bezahlt wird – für "verfügbar bis Zahltag"
+SPENDING_TYPES = {"giro", "bargeld"}
 
 
 def _dec(value) -> Decimal:
@@ -162,10 +176,20 @@ def summary(date_from: date | None = None, date_to: date | None = None,
     months = sorted(set(list(monthly_in) + list(monthly_out) + list(savings)))
     balances = []
     total = Decimal("0")
+    assets = Decimal("0")
+    liabilities = Decimal("0")
     booked = _summed_amounts(db, list(accounts))
     for a in accounts.values():
         bal = (a.opening_balance or Decimal("0")) + booked.get(a.id, Decimal("0"))
         total += bal
+        # Eine Kreditkarte im Minus ist eine Schuld, kein negatives Guthaben –
+        # das Nettovermögen bleibt gleich, aber "Vermögen" und "Schulden"
+        # lassen sich getrennt benennen.
+        if a.type in LIABILITY_TYPES or bal < 0:
+            liabilities += -bal if bal < 0 else Decimal("0")
+            assets += bal if bal > 0 else Decimal("0")
+        else:
+            assets += bal
         balances.append(AccountBalance(account_id=a.id, name=a.name, type=a.type,
                                        balance=float(bal), shared=len(a.account_roles) > 1,
                                        is_household=a.is_household))
@@ -178,6 +202,7 @@ def summary(date_from: date | None = None, date_to: date | None = None,
     return DashboardSummary(
         date_from=date_from, date_to=date_to,
         income=float(income), expenses=float(expenses), balance_total=float(total),
+        assets_total=float(assets), liabilities_total=float(liabilities),
         unassigned_count=unassigned,
         accounts=sorted(balances, key=lambda b: b.name),
         monthly_balance=[MonthValue(month=m, value=float(monthly_in[m] - monthly_out[m])) for m in months],
@@ -288,6 +313,7 @@ def savings_rate(date_from: date | None = None, date_to: date | None = None,
     inc = {m: Decimal("0") for m in months}
     out = {m: Decimal("0") for m in months}
     saved = {m: Decimal("0") for m in months}
+    saved_in = {m: Decimal("0") for m in months}   # Zuflüsse, die Summary als Einnahme führt
     for t in txs:
         m = effective_period(t, start_day)
         if m not in inc:
@@ -297,6 +323,12 @@ def savings_rate(date_from: date | None = None, date_to: date | None = None,
         if acc is not None and acc.type in SAVINGS_TYPES:
             # Sparkonto-Seite: Zugang zählt positiv, Rückbuchung negativ
             saved[m] += t.amount_ref
+            # Was /dashboard/summary hier als Einnahme zählen würde (z.B.
+            # Zinsen): getrennt mitführen, damit sich income_total daraus
+            # rekonstruieren lässt, ohne die Quote zu verfälschen.
+            if (not t.transfer_id and not (cat and cat.is_transfer_like)
+                    and t.amount_ref >= 0):
+                saved_in[m] += t.amount_ref
             # ... und NICHT zusätzlich in die Bezugsgröße: derselbe Euro wäre
             # sonst gleichzeitig der Zähler und Teil des Nenners. Ein noch
             # nicht verknüpfter Übertrag aufs Tagesgeld trieb die Quote so
@@ -322,14 +354,22 @@ def savings_rate(date_from: date | None = None, date_to: date | None = None,
         # None lässt im Diagramm eine Lücke, statt eine Null zu behaupten.
         return round(float(value / base * 100), 1) if base else None
 
+    # Zwei Einnahmen-Begriffe, bewusst beide ausgewiesen:
+    #   income_total – alles, was hereinkam. IDENTISCH mit /dashboard/summary,
+    #                  damit nicht zwei Kacheln verschiedene "Einnahmen" zeigen.
+    #   income       – Bezugsgröße der Quote, ohne Zugänge auf Sparkonten. Die
+    #                  sind ja der Zähler; im Nenner wären sie doppelt.
+    # Überschuss und Sparpotenzial rechnen mit income_total, sonst könnte das
+    # Gesparte das Potenzial übersteigen, ohne dass jemand mehr gespart hätte.
     return SavingsRateOut(
         months=months,
-        income=[float(inc[m]) for m in months],
+        income=[float(inc[m] + saved_in[m]) for m in months],
+        income_base=[float(inc[m]) for m in months],
         expenses=[float(out[m]) for m in months],
         saved=[float(saved[m]) for m in months],
         rate=[pct(saved[m], inc[m]) for m in months],
-        surplus=[float(inc[m] - out[m]) for m in months],
-        surplus_rate=[pct(inc[m] - out[m], inc[m]) for m in months],
+        surplus=[float(inc[m] + saved_in[m] - out[m]) for m in months],
+        surplus_rate=[pct(inc[m] + saved_in[m] - out[m], inc[m] + saved_in[m]) for m in months],
     )
 
 
@@ -435,16 +475,22 @@ def _spend_parts(t: Transaction, transfer_like_ids: set[int]):
 
 
 @router.get("/cumulative", response_model=CumulativeOut)
-def cumulative(month: str | None = None, account_ids: list[int] | None = Query(None),
+def cumulative(month: str | None = None, date_in_period: date | None = None,
+               account_ids: list[int] | None = Query(None),
                user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Tagesgenau aufsummierte Ausgaben des Monats gegen den Vormonat (4.9).
 
     Beantwortet die Frage "bin ich dieses Mal früher dran als sonst?" –
     während des Monats, solange man noch gegensteuern kann.
+
+    Wie bei /budgets/status darf die Oberfläche aus einem gewählten Zeitraum
+    keinen Periodenschlüssel selbst schneiden: mit verschobenem Starttag
+    gehört der 30.08. schon zum September. Dafür gibt es `date_in_period`.
     """
     today = date.today()
     start_day = get_start_day(db, user)
-    key = month or current_period(start_day)
+    key = month or (period_key(date_in_period, start_day) if date_in_period is not None
+                    else current_period(start_day))
     first, last = period_bounds(key, start_day)
     prev_key = period_key(first - timedelta(days=1), start_day)
     prev_first, prev_last = period_bounds(prev_key, start_day)
@@ -610,3 +656,163 @@ def set_layout(payload: LayoutOut, mode: str = "gesamt",
     layout.tiles = by_mode
     db.commit()
     return payload
+
+
+@router.get("/forecast", response_model=ForecastOut)
+def forecast(account_ids: list[int] | None = Query(None),
+             user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Was bleibt bis zum Ende des laufenden Abrechnungsmonats? (4.9)
+
+    Die meistgestellte Haushaltsfrage – und die einzige, die nach vorn schaut.
+    Alle uebrigen Kacheln sind Rueckschau: sie sagen, wie es war, nicht ob das
+    Geld bis zum Zahltag reicht.
+
+    Rechnung: Saldo der Zahlungskonten (Giro/Bargeld, nicht Sparkonten – die
+    sind nicht zum Ausgeben gedacht) minus die wiederkehrenden Kosten, die bis
+    zum Periodenende noch abgebucht werden. Bewusst ohne Prognose variabler
+    Ausgaben: eine geratene Zahl waere schlechter als gar keine.
+    """
+    start_day = get_start_day(db, user)
+    period = current_period(start_day)
+    first, last = period_bounds(period, start_day)
+    today = date.today()
+
+    filter_ids = _scoped_ids(db, user, account_ids)
+    accounts = db.query(Account).filter(Account.id.in_(filter_ids),
+                                        Account.archived.is_(False)).all()
+    spending = [a for a in accounts if a.type in SPENDING_TYPES]
+    booked = _summed_amounts(db, [a.id for a in spending])
+    balance = sum(((a.opening_balance or Decimal("0")) + booked.get(a.id, Decimal("0"))
+                   for a in spending), Decimal("0"))
+
+    # Noch ausstehende wiederkehrende Kosten bis zum Periodenende. Die
+    # Faelligkeit rechnet der vorhandene Dienst aus (letzte Abbuchung +
+    # Zyklus) – hier soll keine zweite Schaetzung entstehen.
+    items = db.query(RecurringItem).filter(RecurringItem.active.is_(True)).all()
+    offen: list[UpcomingCharge] = []
+    for it in items:
+        if it.paying_account_id is not None and it.paying_account_id not in filter_ids:
+            continue
+        st = compute_recurring_status(db, it)
+        due = st.next_due_estimate
+        if due is None or due < today or due > last:
+            continue
+        betrag = st.ist if st.ist is not None else abs(it.expected_amount or Decimal("0"))
+        offen.append(UpcomingCharge(name=it.name, due=due, amount=float(abs(betrag))))
+    offen.sort(key=lambda c: c.due)
+    ausstehend = Decimal(str(sum(c.amount for c in offen)))
+
+    tage = max(0, (last - today).days) if today <= last else 0
+    verfuegbar = balance - ausstehend
+    return ForecastOut(
+        period=period, period_from=first, period_to=last,
+        days_left=tage,
+        balance_spending=float(balance),
+        upcoming_total=float(ausstehend),
+        available=float(verfuegbar),
+        per_day=round(float(verfuegbar / tage), 2) if tage > 0 and verfuegbar > 0 else 0.0,
+        accounts=[a.name for a in sorted(spending, key=lambda a: a.name)],
+        charges=offen,
+    )
+
+
+@router.get("/income-sources", response_model=IncomeSourcesOut)
+def income_sources(date_from: date | None = None, date_to: date | None = None,
+                   account_ids: list[int] | None = Query(None), limit: int = 8,
+                   user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Woher kommt das Geld? (4.9)
+
+    Fuer Ausgaben gab es fuenf Auswertungen, fuer Einnahmen nur eine Summe.
+    Gruppiert die Einnahmen des Zeitraums nach Gegenpartei – Umbuchungen
+    zaehlen wie ueberall nicht mit.
+    """
+    if date_to is None:
+        date_to = date.today()
+    if date_from is None:
+        date_from = date_to.replace(day=1).replace(year=date_to.year - 1)
+    filter_ids = _scoped_ids(db, user, account_ids)
+    start_day = get_start_day(db, user)
+    transfer_like_ids = {cid for (cid,) in db.query(Category.id)
+                         .filter(Category.is_transfer_like.is_(True)).all()}
+    covered = covered_periods(date_from, date_to, start_day)
+    txs = [t for t in db.query(Transaction)
+           .filter(Transaction.account_id.in_(filter_ids),
+                   Transaction.transfer_id.is_(None),
+                   Transaction.amount > 0,
+                   range_condition(date_from, date_to, start_day)).all()
+           if in_selected_range(t, date_from, date_to, start_day, covered)]
+
+    totals: dict[str, Decimal] = defaultdict(Decimal)
+    for t in txs:
+        if t.category_id in transfer_like_ids:
+            continue
+        totals[(t.counterparty or "").strip() or "Ohne Angabe"] += t.amount_ref
+
+    gesamt = sum(totals.values(), Decimal("0"))
+    ranked = sorted(totals, key=lambda n: -totals[n])[:max(1, limit)]
+    rows = [IncomeSourceRow(counterparty=n, total=float(totals[n]),
+                            share=round(float(totals[n] / gesamt * 100), 1) if gesamt else 0.0)
+            for n in ranked]
+    rest = gesamt - sum(totals[n] for n in ranked)
+    return IncomeSourcesOut(total=float(gesamt), rows=rows, other=float(rest))
+
+
+@router.get("/outliers", response_model=OutliersOut)
+def outliers(date_from: date | None = None, date_to: date | None = None,
+             account_ids: list[int] | None = Query(None), limit: int = 8,
+             user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Auffaellig teure Buchungen (4.9).
+
+    Vergleicht jede Ausgabe mit dem MEDIAN der uebrigen Ausgaben beim selben
+    Empfaenger. Median statt Mittelwert, weil ein einzelner Ausreisser den
+    Mittelwert selbst mit nach oben zieht und sich dadurch versteckt.
+
+    Nur Empfaenger mit mindestens drei weiteren Buchungen – bei zwei Werten
+    ist "ungewoehnlich" keine sinnvolle Aussage.
+    """
+    if date_to is None:
+        date_to = date.today()
+    if date_from is None:
+        date_from = date_to.replace(day=1).replace(year=date_to.year - 1)
+    filter_ids = _scoped_ids(db, user, account_ids)
+    start_day = get_start_day(db, user)
+    transfer_like_ids = {cid for (cid,) in db.query(Category.id)
+                         .filter(Category.is_transfer_like.is_(True)).all()}
+
+    # Vergleichsbasis ist die gesamte Historie des Kontos, nicht nur der
+    # gewaehlte Zeitraum: sonst waere in einem einzelnen Monat fast alles
+    # "ungewoehnlich", weil es zu wenige Vergleichswerte gibt.
+    alle = (db.query(Transaction)
+            .filter(Transaction.account_id.in_(filter_ids),
+                    Transaction.transfer_id.is_(None),
+                    Transaction.amount < 0)
+            .all())
+    nach_empfaenger: dict[str, list[Transaction]] = defaultdict(list)
+    for t in alle:
+        if t.category_id in transfer_like_ids:
+            continue
+        nach_empfaenger[(t.counterparty or "").strip() or "Ohne Angabe"].append(t)
+
+    covered = covered_periods(date_from, date_to, start_day)
+    rows: list[OutlierRow] = []
+    for name, gruppe in nach_empfaenger.items():
+        if len(gruppe) < 4:
+            continue
+        betraege = sorted(-t.amount_ref for t in gruppe)
+        mitte = len(betraege) // 2
+        median = (betraege[mitte] if len(betraege) % 2
+                  else (betraege[mitte - 1] + betraege[mitte]) / 2)
+        if median <= 0:
+            continue
+        for t in gruppe:
+            if not in_selected_range(t, date_from, date_to, start_day, covered):
+                continue
+            betrag = -t.amount_ref
+            if betrag < median * 2:
+                continue
+            rows.append(OutlierRow(
+                transaction_id=t.id, booking_date=t.booking_date, counterparty=name,
+                amount=float(betrag), median=float(median),
+                factor=round(float(betrag / median), 1)))
+    rows.sort(key=lambda r: -r.factor)
+    return OutliersOut(rows=rows[:max(1, limit)])

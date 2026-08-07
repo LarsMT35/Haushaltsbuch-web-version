@@ -454,6 +454,10 @@ class PeriodBoundsOut(BaseModel):
     month: str
     date_from: date
     date_to: date
+    # Vorperiode für den Vergleich "gegenüber dem Zeitraum davor"
+    previous_month: str
+    previous_from: date
+    previous_to: date
 
 
 # --------------------------------------------------------------- Dashboard
@@ -484,7 +488,9 @@ class DashboardSummary(BaseModel):
     date_to: date
     income: float
     expenses: float
-    balance_total: float
+    balance_total: float          # Nettovermögen: Guthaben minus Schulden
+    assets_total: float = 0.0     # nur die Guthaben
+    liabilities_total: float = 0.0  # nur die Schulden (z.B. Kreditkarte im Minus)
     unassigned_count: int
     accounts: list[AccountBalance]
     monthly_balance: list[MonthValue]
@@ -519,9 +525,12 @@ class SavingsRateOut(BaseModel):
     """
 
     months: list[str]
-    # Einnahmen OHNE Zugänge auf Sparkonten: die sind hier das Gesparte und
-    # dürfen nicht zugleich die Bezugsgröße aufblähen.
+    # Alles, was hereinkam – identisch mit /dashboard/summary, damit nicht zwei
+    # Kacheln nebeneinander verschiedene "Einnahmen" behaupten.
     income: list[float]
+    # Bezugsgröße der Quote: ohne Zugänge auf Sparkonten. Die sind der Zähler;
+    # im Nenner stünde derselbe Euro ein zweites Mal.
+    income_base: list[float]
     expenses: list[float]
     saved: list[float]                  # Netto-Zufluss auf Sparkonten in Euro
     # null = keine Einnahmen im Zeitraum, also keine Quote bestimmbar
@@ -806,3 +815,56 @@ class RuleImportResult(BaseModel):
 class BankProfileImportResult(BaseModel):
     created: int
     skipped_existing: int
+
+
+# ------------------------------------------- v1.8: Vorausschau & Einnahmen
+
+class UpcomingCharge(BaseModel):
+    name: str
+    due: date
+    amount: float
+
+
+class ForecastOut(BaseModel):
+    """„Wie viel habe ich noch bis zum Zahltag?" (4.9)
+
+    Bewusst ohne Prognose der variablen Ausgaben: eine geratene Zahl wäre
+    schlechter als gar keine. Gerechnet wird nur mit Bekanntem – dem Saldo der
+    Zahlungskonten und den bereits terminierten wiederkehrenden Abbuchungen.
+    """
+
+    period: str
+    period_from: date
+    period_to: date
+    days_left: int
+    balance_spending: float      # Saldo der Giro-/Bargeldkonten
+    upcoming_total: float        # noch anstehende wiederkehrende Kosten
+    available: float             # Saldo minus Anstehendes
+    per_day: float               # verfügbar je verbleibendem Tag (0, wenn negativ)
+    accounts: list[str]
+    charges: list[UpcomingCharge]
+
+
+class IncomeSourceRow(BaseModel):
+    counterparty: str
+    total: float
+    share: float                 # Anteil an den Einnahmen des Zeitraums in %
+
+
+class IncomeSourcesOut(BaseModel):
+    total: float
+    rows: list[IncomeSourceRow]
+    other: float                 # Summe der nicht einzeln gezeigten Quellen
+
+
+class OutlierRow(BaseModel):
+    transaction_id: int
+    booking_date: date
+    counterparty: str
+    amount: float
+    median: float                # üblicher Betrag bei diesem Empfänger
+    factor: float                # das Wievielfache des Üblichen
+
+
+class OutliersOut(BaseModel):
+    rows: list[OutlierRow]

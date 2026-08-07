@@ -217,12 +217,20 @@ def get_period_bounds(month: str, db: Session = Depends(get_db),
     die Buchungsliste werden. Die Umrechnung bleibt bewusst im Backend, damit
     die Periodenregel nicht ein zweites Mal in JavaScript existiert (Prinzip 6).
     """
+    start_day = get_start_day(db, user)
     try:
-        first, last = period_bounds(month, get_start_day(db, user))
+        first, last = period_bounds(month, start_day)
     except (ValueError, TypeError):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail="Monat muss das Format YYYY-MM haben.")
-    return PeriodBoundsOut(month=month, date_from=first, date_to=last)
+    # Die Vorperiode gleich mitliefern: der Vergleich "gegenüber dem Zeitraum
+    # davor" wurde im Frontend kalendarisch gerechnet und lag bei verschobenem
+    # Starttag um einen Tag daneben (26.06.-26.07. statt 27.06.-26.07.).
+    previous = period_key(first - timedelta(days=1), start_day)
+    prev_first, prev_last = period_bounds(previous, start_day)
+    return PeriodBoundsOut(month=month, date_from=first, date_to=last,
+                           previous_month=previous,
+                           previous_from=prev_first, previous_to=prev_last)
 
 
 @router.put("/period", response_model=PeriodSettingOut)

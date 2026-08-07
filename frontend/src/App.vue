@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, provide, ref, watch } from 'vue'
+import { refreshChartColors } from './chartColors.js'
 import { useRoute, useRouter } from 'vue-router'
 import { api, fmtAmount, getToken, setToken } from './api.js'
 
@@ -22,10 +23,13 @@ async function loadSession() {
 function applyTheme() {
   document.documentElement.dataset.scheme = settings.value.color_scheme || 'hell'
   document.documentElement.dataset.dark = settings.value.dark_mode ? 'true' : 'false'
+  // Diagramme zeichnen auf ein Canvas und können var(--c1) nicht auflösen –
+  // die Werte müssen nach jedem Schemawechsel neu ausgelesen werden.
+  refreshChartColors()
 }
 watch(settings, applyTheme, { deep: true })
 watch(() => route.path, () => { if (loggedIn.value && !user.value) loadSession() })
-onMounted(loadSession)
+onMounted(() => { refreshChartColors(); loadSession() })
 
 async function refreshAccounts() {
   if (getToken()) accounts.value = await api.get('/accounts')

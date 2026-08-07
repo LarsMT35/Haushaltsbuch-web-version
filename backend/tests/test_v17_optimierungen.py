@@ -199,7 +199,9 @@ def test_period_bounds_calendar_month(client, auth_headers):
     r = client.get("/api/v1/budgets/period/bounds", headers=auth_headers,
                    params={"month": "2026-05"})
     assert r.status_code == 200
-    assert r.json() == {"month": "2026-05", "date_from": "2026-05-01", "date_to": "2026-05-31"}
+    assert r.json() == {"month": "2026-05", "date_from": "2026-05-01", "date_to": "2026-05-31",
+                        "previous_month": "2026-04", "previous_from": "2026-04-01",
+                        "previous_to": "2026-04-30"}
 
 
 def test_period_bounds_shifted_month(client, auth_headers, start_day_27):
@@ -209,6 +211,9 @@ def test_period_bounds_shifted_month(client, auth_headers, start_day_27):
     body = r.json()
     assert body["date_from"] == "2026-04-27"
     assert body["date_to"] == "2026-05-26"
+    # Vorperiode: exakt anschliessend, nicht kalendarisch geschaetzt
+    assert body["previous_month"] == "2026-04"
+    assert (body["previous_from"], body["previous_to"]) == ("2026-03-27", "2026-04-26")
 
 
 def test_period_bounds_rejects_invalid_month(client, auth_headers):

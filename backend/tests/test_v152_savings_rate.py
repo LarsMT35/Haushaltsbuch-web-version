@@ -144,9 +144,13 @@ def _tx(client, h, acc, d, amount, counterparty="Test"):
 
 def test_savings_inflow_is_not_also_income(client, auth_headers):
     """Ein Zugang aufs Sparkonto ist das Gesparte - er darf nicht zusaetzlich
-    die Bezugsgroesse aufblaehen. Sonst waere derselbe Euro Zaehler UND Teil
-    des Nenners, und ein nicht verknuepfter Uebertrag triebe die Quote
-    kuenstlich Richtung 100 %."""
+    die BEZUGSGROESSE der Quote aufblaehen. Sonst waere derselbe Euro Zaehler
+    UND Teil des Nenners, und ein nicht verknuepfter Uebertrag triebe die Quote
+    kuenstlich Richtung 100 %.
+
+    Ausgewiesen werden trotzdem beide Zahlen: `income` ist alles, was
+    hereinkam (identisch mit /dashboard/summary, damit nicht zwei Kacheln
+    verschiedene "Einnahmen" behaupten), `income_base` ist der Nenner."""
     h = auth_headers
     giro = _acc(client, h, "V175-Giro", opening_balance="0", opening_balance_date="2026-01-01")
     tages = _acc(client, h, "V175-Tagesgeld", typ="tagesgeld",
@@ -158,9 +162,13 @@ def test_savings_inflow_is_not_also_income(client, auth_headers):
         "date_from": "2026-04-01", "date_to": "2026-04-30",
         "account_ids": [giro["id"], tages["id"]]}).json()
     i = r["months"].index("2026-04")
-    assert r["income"][i] == 2000.0        # nur das Gehalt, nicht 2500
+    s = client.get("/api/v1/dashboard/summary", headers=h, params={
+        "date_from": "2026-04-01", "date_to": "2026-04-30",
+        "account_ids": [giro["id"], tages["id"]]}).json()
+    assert r["income"][i] == s["income"] == 2500.0   # dieselbe Zahl wie in den Kennzahlen
+    assert r["income_base"][i] == 2000.0             # Nenner ohne den Sparzugang
     assert r["saved"][i] == 500.0
-    assert r["rate"][i] == 25.0            # 500 von 2000, nicht 20 % von 2500
+    assert r["rate"][i] == 25.0                      # 500 von 2000, nicht 20 % von 2500
 
 
 def test_rate_is_null_without_income(client, auth_headers):
@@ -175,10 +183,9 @@ def test_rate_is_null_without_income(client, auth_headers):
         "date_from": "2026-06-01", "date_to": "2026-06-30",
         "account_ids": [tages["id"]]}).json()
     i = r["months"].index("2026-06")
-    assert r["income"][i] == 0.0
+    assert r["income_base"][i] == 0.0       # kein Einkommen ausser dem Zugang selbst
     assert r["saved"][i] == 300.0
-    assert r["rate"][i] is None            # keine Quote, nicht 0 %
-    assert r["surplus_rate"][i] is None
+    assert r["rate"][i] is None             # keine Quote, nicht 0 %
 
 
 def test_net_savings_logic_unchanged(client, auth_headers):
@@ -198,5 +205,5 @@ def test_net_savings_logic_unchanged(client, auth_headers):
         "account_ids": [giro["id"], tages["id"]]}).json()
     i = r["months"].index("2026-05")
     assert r["saved"][i] == 150.0
-    assert r["income"][i] == 1000.0
+    assert r["income_base"][i] == 1000.0
     assert r["rate"][i] == 15.0

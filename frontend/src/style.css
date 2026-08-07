@@ -17,6 +17,18 @@
   --accent-soft: #dbeafe;
   --positive: #15803d;
   --negative: #b91c1c;
+  /* Diagrammpalette: gehört zum Schema, damit Kacheln nicht in fremden Farben
+     stehen, wenn die Seite umschaltet. Reihenfolge = Zuweisungsreihenfolge in
+     den Diagrammen, deshalb starten die kräftigsten Töne vorn. */
+  --c1: #2563eb; --c2: #0f766e; --c3: #b45309; --c4: #7c3aed;
+  --c5: #be185d; --c6: #0369a1; --c7: #4d7c0f; --c8: #9a3412;
+  --c9: #6b7280; --c10: #065f46; --c11: #7e22ce; --c12: #1d4ed8;
+  /* Rollenfarben mit fester Bedeutung im Diagramm */
+  --c-income: #15803d;     /* Einnahmen */
+  --c-expense: #b91c1c;    /* Ausgaben */
+  --c-neutral: #64748b;    /* Vergleichs-/Hilfslinien */
+  --c-strong: #1c2530;     /* Summenlinie */
+
   /* Feste Ausnahme: Ampel & Warnfarben (nicht schema-abhängig) */
   --ampel-gruen: #16a34a;
   --ampel-gelb: #f59e0b;
@@ -130,6 +142,45 @@
   --accent: #66aaff;
   --accent-soft: #002a66;
   --warn-bg: #332900;
+}
+
+
+/* Diagrammpaletten je Schema. Nur die Töne, die sich vom Standard abheben
+   müssen – der Rest erbt aus :root. Im Dark Mode werden die Farben angehoben,
+   sonst verschwinden sie auf dunklem Grund. */
+[data-scheme='ruhig'] {
+  --c1: #15803d; --c2: #0f766e; --c3: #4d7c0f; --c4: #b45309;
+  --c5: #0369a1; --c6: #7c3aed; --c7: #be185d; --c8: #065f46;
+}
+[data-scheme='warm'] {
+  --c1: #c2410c; --c2: #b45309; --c3: #a16207; --c4: #9a3412;
+  --c5: #7c2d12; --c6: #0f766e; --c7: #7c3aed; --c8: #be185d;
+}
+[data-scheme='ozean'] {
+  --c1: #0369a1; --c2: #0e7490; --c3: #1d4ed8; --c4: #0f766e;
+  --c5: #7c3aed; --c6: #b45309; --c7: #065f46; --c8: #be185d;
+}
+[data-scheme='beere'] {
+  --c1: #a21caf; --c2: #be185d; --c3: #7c3aed; --c4: #c2410c;
+  --c5: #0f766e; --c6: #1d4ed8; --c7: #9a3412; --c8: #4d7c0f;
+}
+/* Kontrast: kräftige, gut unterscheidbare Töne statt feiner Abstufungen */
+[data-scheme='kontrast'] {
+  --c1: #0033cc; --c2: #006600; --c3: #cc6600; --c4: #660099;
+  --c5: #cc0066; --c6: #006699; --c7: #666600; --c8: #993300;
+  --c-income: #006600; --c-expense: #cc0000; --c-neutral: #333333; --c-strong: #000000;
+}
+[data-dark='true'] {
+  --c1: #60a5fa; --c2: #2dd4bf; --c3: #fbbf24; --c4: #c084fc;
+  --c5: #f472b6; --c6: #38bdf8; --c7: #a3e635; --c8: #fb923c;
+  --c9: #cbd5e1; --c10: #34d399; --c11: #d8b4fe; --c12: #93c5fd;
+  --c-income: #4ade80; --c-expense: #f87171;
+  --c-neutral: #94a3b8; --c-strong: #e5ecf3;
+}
+[data-scheme='kontrast'][data-dark='true'] {
+  --c1: #66aaff; --c2: #66ff66; --c3: #ffcc00; --c4: #cc99ff;
+  --c5: #ff99cc; --c6: #66ddff; --c7: #ccff66; --c8: #ffaa66;
+  --c-income: #66ff66; --c-expense: #ff6666; --c-neutral: #cccccc; --c-strong: #ffffff;
 }
 
 /* Generischer Dark-Mode-Fallback – greift nur, wenn ein Schema (noch) keine

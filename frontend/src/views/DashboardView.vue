@@ -2,6 +2,7 @@
 import { computed, inject, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, fmtAmount, fmtDate } from '../api.js'
+import { fade, palette as chartPalette, role as chartRole } from '../chartColors.js'
 import ChartCanvas from '../components/ChartCanvas.vue'
 
 const router = useRouter()
@@ -20,6 +21,9 @@ const budgetStatus = ref(null)
 const cumulative = ref(null)
 const categoryTrend = ref(null)
 const topCounterparties = ref(null)
+const forecast = ref(null)
+const incomeSources = ref(null)
+const outliers = ref(null)
 
 // ---------------------------------------------------------------- Zeitraum
 // Lokale Datumsteile statt toISOString(), sonst verschiebt die UTC-Umrechnung
@@ -167,7 +171,7 @@ function categoryLabel() {
 const FULL_WIDTH = new Set([
   'kpis', 'cumulative', 'budget_progress', 'fixed_base', 'cashflow', 'by_category',
   'category_trend', 'savings', 'networth', 'savings_rate', 'year_comparison',
-  'recurring_ampel', 'deposits',
+  'recurring_ampel', 'deposits', 'forecast', 'income_sources', 'outliers',
 ])
 // Nur Kacheln mit Diagramm brauchen eine Standardhöhe – Tabellen und
 // Kennzahlen sollen sich sonst nach ihrem Inhalt richten, statt Leerraum
@@ -179,7 +183,8 @@ const CHART_TILES = new Set([
 const DEFAULT_HEIGHT = 320
 
 const TILES = [
-  ['kpis', 'Kennzahlen'], ['unassigned', 'Handlungsbedarf'],
+  ['kpis', 'Kennzahlen'], ['forecast', 'Verfügbar bis Zahltag'],
+  ['unassigned', 'Handlungsbedarf'],
   ['cumulative', 'Monatsverlauf kumuliert'],
   ['budget_progress', 'Budget-Fortschritt'],
   ['fixed_base', 'Fixkosten-Sockel'],
@@ -193,21 +198,30 @@ const TILES = [
   ['year_comparison', 'Jahresvergleich'],
   ['recurring_ampel', 'Wiederkehrende Kosten (Ampel)'],
   ['deposits', 'Einzahlungen gemeinsames Konto'],
+  ['allocation', 'Vermögensaufteilung'],
+  ['income_sources', 'Einnahmen nach Quelle'],
+  ['outliers', 'Auffällige Buchungen'],
 ]
 // Je Modus nur zeigen, was dort auch eine Frage beantwortet – statt überall
 // alles. Der Rest ist über „Ausgeblendet: +" jederzeit dazuschaltbar (4.9.1).
-const HIDDEN_BY_MODE = {
-  gemeinsam: ['networth', 'savings_rate', 'savings', 'year_comparison',
-              'category_trend', 'top_counterparties'],
-  persoenlich: ['deposits', 'category_trend', 'top_counterparties', 'upcoming'],
-  gesamt: ['deposits', 'category_trend', 'top_counterparties'],
+// Sichtbar beim ERSTEN Start – bewusst eine kleine, kuratierte Auswahl statt
+// aller Kacheln. Siebzehn Diagramme auf einmal beantworten keine Frage, sie
+// erschlagen. Alles Übrige steht oben als "+ Name" bereit und wird erst dann
+// geladen, wenn man es einblendet.
+const DEFAULT_VISIBLE = {
+  gemeinsam: ['kpis', 'unassigned', 'budget_progress', 'cumulative',
+              'by_category', 'cashflow', 'recurring_ampel', 'deposits'],
+  persoenlich: ['kpis', 'forecast', 'unassigned', 'budget_progress', 'cumulative',
+                'by_category', 'cashflow', 'fixed_base', 'networth', 'savings_rate'],
+  gesamt: ['kpis', 'forecast', 'unassigned', 'by_category', 'cashflow',
+           'networth', 'allocation', 'savings_rate'],
 }
 const layout = ref([])
 const dragId = ref(null)
 
 function blankTile(id) {
-  const hidden = HIDDEN_BY_MODE[mode.value] || []
-  return { id, visible: !hidden.includes(id), w: 0, h: 0, opts: {} }
+  const sichtbar = DEFAULT_VISIBLE[mode.value] || []
+  return { id, visible: sichtbar.includes(id), w: 0, h: 0, opts: {} }
 }
 function defaultLayout() {
   return TILES.map(([id]) => blankTile(id))
@@ -391,7 +405,8 @@ async function load() {
 
   ;[summary.value, previous.value, trend.value, networth.value, savingsRate.value,
     yearComp.value, recurringStatus.value, budgetStatus.value, cumulative.value,
-    categoryTrend.value, topCounterparties.value] = await Promise.all([
+    categoryTrend.value, topCounterparties.value,
+    forecast.value, incomeSources.value, outliers.value] = await Promise.all([
     api.get('/dashboard/summary', summaryParams),
     api.get('/dashboard/summary', { ...previousRange(range.date_from, range.date_to), account_ids }),
     api.get('/dashboard/summary', trendParams),
@@ -405,6 +420,9 @@ async function load() {
     optional('category_trend', () => api.get('/dashboard/category-trend',
       { ...trendParams, limit: tileOpt('category_trend', 'lines') })),
     optional('top_counterparties', () => api.get('/dashboard/top-counterparties', { ...range, account_ids, limit: 10 })),
+    optional('forecast', () => api.get('/dashboard/forecast', { account_ids })),
+    optional('income_sources', () => api.get('/dashboard/income-sources', { ...range, account_ids, limit: 8 })),
+    optional('outliers', () => api.get('/dashboard/outliers', { ...range, account_ids, limit: 8 })),
   ])
   await loadDeposits()
 }
@@ -475,6 +493,23 @@ const cashflow = computed(() => {
 
 // Waagerechte Balken statt Donut: Längen vergleicht das Auge deutlich
 // zuverlässiger als Kreissegmente, gerade bei vielen Kategorien.
+/** Guthabenkonten für die Aufteilung – Schulden gehören nicht in einen
+ *  Anteilskreis, sie stehen als eigene Zahl darunter. */
+/** Kurzform des gewählten Zeitraums für die Kachel-Überschriften. Verlaufs-
+ *  Kacheln schreiben stattdessen "letzte N Monate" – so ist an jeder Kachel
+ *  ablesbar, worauf sich ihre Zahlen beziehen, statt nur einmal oben. */
+const zeitraum = computed(() => (summary.value
+  ? `${fmtDate(summary.value.date_from)} – ${fmtDate(summary.value.date_to)}` : ''))
+
+const allocation = computed(() =>
+  (summary.value?.accounts || []).filter((a) => a.balance > 0)
+    .sort((a, b) => b.balance - a.balance))
+
+function pickIncomeSource({ index }) {
+  const r = incomeSources.value?.rows[index]
+  if (r) openTransactions({ text: r.counterparty, direction: 'income' })
+}
+
 /** Auffälligster Monat mit Quote über 100 % – der erklärungsbedürftige Fall. */
 const savingsRateOutlier = computed(() => {
   const s = savingsRate.value
@@ -576,8 +611,10 @@ const upcoming = computed(() => {
   return { rows: due, total: due.reduce((s, r) => s + Number(r.expected_amount || 0), 0) }
 })
 
-const palette = ['#2563eb', '#0f766e', '#b45309', '#7c3aed', '#be185d', '#0369a1',
-  '#4d7c0f', '#b91c1c', '#6b7280', '#92400e', '#065f46', '#1d4ed8']
+// Farben kommen aus dem aktiven Schema (siehe chartColors.js) – feste
+// Hex-Werte ließen die Diagramme blau stehen, während die Seite umschaltete.
+const palette = chartPalette
+const col = chartRole
 const NO_LEGEND = { plugins: { legend: { display: false } } }
 </script>
 
@@ -743,10 +780,10 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
           <span class="hint">{{ fmtDate(cumulative.date_from) }} – {{ fmtDate(cumulative.date_to) }}</span></h3>
         <ChartCanvas type="line" :labels="cumulative.days"
           :datasets="[
-            { label: cumulative.previous_month, data: cumulative.previous, borderColor: '#9aa7b4',
+            { label: cumulative.previous_month, data: cumulative.previous, borderColor: col.neutral,
               borderDash: [5, 4], pointRadius: 0, tension: .2 },
-            { label: cumulative.month, data: cumulative.current, borderColor: '#2563eb',
-              backgroundColor: '#2563eb22', fill: true, pointRadius: 0, tension: .2, spanGaps: false },
+            { label: cumulative.month, data: cumulative.current, borderColor: palette[0],
+              backgroundColor: fade(palette[0]), fill: true, pointRadius: 0, tension: .2, spanGaps: false },
           ]"
           :options="{ scales: { x: { title: { display: true, text: 'Tag im Monat' } } } }" />
         <p class="hint" style="margin: .4rem 0 0">Über der grauen Linie = schneller als im Vormonat.</p>
@@ -797,7 +834,7 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
                 data-tip-pos="left"
                 @pointerdown="startResize($event, 'fixed_base')"
                 @dblclick="resetSize('fixed_base')"></button>
-        <h3>Fixkosten-Sockel</h3>
+        <h3>Fixkosten-Sockel <span class="hint">{{ zeitraum }}</span></h3>
         <p v-if="fixedBase.income">
           Von <strong>{{ fmtAmount(fixedBase.income) }}</strong> Einnahmen sind
           <strong>{{ fmtAmount(fixedBase.fixed) }}</strong> Fixkosten
@@ -808,9 +845,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         <p v-else class="hint">Keine Einnahmen im gewählten Zeitraum.</p>
         <ChartCanvas type="bar" :labels="['Einnahmen']"
           :datasets="[
-            { label: 'Fixkosten', data: [fixedBase.fixed], backgroundColor: '#b45309' },
-            { label: 'variable Ausgaben', data: [fixedBase.variable], backgroundColor: '#2563eb' },
-            { label: 'übrig', data: [Math.max(0, fixedBase.free)], backgroundColor: '#15803d' },
+            { label: 'Fixkosten', data: [fixedBase.fixed], backgroundColor: palette[2] },
+            { label: 'variable Ausgaben', data: [fixedBase.variable], backgroundColor: palette[0] },
+            { label: 'übrig', data: [Math.max(0, fixedBase.free)], backgroundColor: col.income },
           ]"
           :options="{ indexAxis: 'y', scales: { x: { stacked: true }, y: { stacked: true } } }" />
       </div>
@@ -872,7 +909,7 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
                 data-tip-pos="left"
                 @pointerdown="startResize($event, 'top_counterparties')"
                 @dblclick="resetSize('top_counterparties')"></button>
-        <h3>Top-Empfänger im Zeitraum</h3>
+        <h3>Top-Empfänger <span class="hint">{{ zeitraum }}</span></h3>
         <div class="tile-scroll">
         <table v-if="topCounterparties.rows.length">
           <tbody>
@@ -896,9 +933,9 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
           <span class="hint">letzte {{ trendMonths }} Monate – Klick öffnet den Monat</span></h3>
         <ChartCanvas type="bar" clickable @pick="pickCashflowMonth" :labels="cashflow.months"
           :datasets="[
-            { label: 'Einnahmen', data: cashflow.income, backgroundColor: '#15803d' },
-            { label: 'Ausgaben', data: cashflow.expenses.map((v) => -v), backgroundColor: '#b91c1c' },
-            { type: 'line', label: 'Bilanz', data: cashflow.balance, borderColor: '#1c2530',
+            { label: 'Einnahmen', data: cashflow.income, backgroundColor: col.income },
+            { label: 'Ausgaben', data: cashflow.expenses.map((v) => -v), backgroundColor: col.expense },
+            { type: 'line', label: 'Bilanz', data: cashflow.balance, borderColor: col.strong,
               borderWidth: 2, pointRadius: 2, tension: .2 },
           ]" />
       </div>
@@ -909,7 +946,7 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
                 data-tip-pos="left"
                 @pointerdown="startResize($event, 'by_category')"
                 @dblclick="resetSize('by_category')"></button>
-        <h3>Ausgaben nach Kategorie <span class="hint">Klick öffnet die Buchungen</span>
+        <h3>Ausgaben nach Kategorie <span class="hint">{{ zeitraum }} · Klick öffnet die Buchungen</span>
           <span class="tile-opts">
             <button v-for="n in [5, 10, 20, 0]" :key="n" type="button"
                     :class="{ active: tileOpt('by_category','top') === n }"
@@ -931,12 +968,12 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
                 data-tip-pos="left"
                 @pointerdown="startResize($event, 'fixed')"
                 @dblclick="resetSize('fixed')"></button>
-        <h3>Ausgaben: fix vs. variabel</h3>
+        <h3>Ausgaben: fix vs. variabel <span class="hint">{{ zeitraum }}</span></h3>
         <ChartCanvas type="bar"
           :labels="['Ausgaben']"
           :datasets="[
-            { label: 'fix', data: [summary.fixed_vs_variable.expenses_fixed], backgroundColor: '#b45309' },
-            { label: 'variabel', data: [summary.fixed_vs_variable.expenses_variable], backgroundColor: '#2563eb' },
+            { label: 'fix', data: [summary.fixed_vs_variable.expenses_fixed], backgroundColor: palette[2] },
+            { label: 'variabel', data: [summary.fixed_vs_variable.expenses_variable], backgroundColor: palette[0] },
           ]"
           :options="{ indexAxis: 'y', scales: { x: { stacked: true }, y: { stacked: true } } }" />
         <p class="hint" style="margin: .4rem 0 0">
@@ -957,7 +994,7 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         <ChartCanvas type="bar" clickable @pick="pickSavingsMonth"
           :labels="trend.savings_movement.map((m) => m.month)"
           :datasets="[{ label: 'Bewegung', data: trend.savings_movement.map((m) => m.value),
-                        backgroundColor: '#0f766e' }]" />
+                        backgroundColor: palette[1] }]" />
       </div>
 
       <div v-if="isVisible('networth') && networth" class="tile wide" v-bind="tileProps('networth')">
@@ -970,7 +1007,7 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
         <ChartCanvas type="line"
           :labels="networth.months"
           :datasets="[
-            { label: 'Gesamt', data: networth.total, borderColor: '#1c2530', borderWidth: 2.5, tension: .2, pointRadius: 0 },
+            { label: 'Gesamt', data: networth.total, borderColor: col.strong, borderWidth: 2.5, tension: .2, pointRadius: 0 },
             ...networth.series.map((s, i) => ({ label: s.name, data: s.values,
               borderColor: palette[i % palette.length], tension: .2, pointRadius: 0 })),
           ]" />
@@ -1000,20 +1037,20 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
           :labels="savingsRate.months"
           :datasets="[
             { label: 'tatsächlich gespart €', data: savingsRate.saved,
-              backgroundColor: savingsRate.saved.map((v) => v >= 0 ? '#0f766e' : '#b91c1c') },
+              backgroundColor: savingsRate.saved.map((v) => v >= 0 ? palette[1] : col.expense) },
             { type: 'line', label: 'Sparpotenzial (Einnahmen − Ausgaben) €', data: savingsRate.surplus,
-              borderColor: '#9aa7b4', borderDash: [5, 4], borderWidth: 2, pointRadius: 0, tension: .2 },
+              borderColor: col.neutral, borderDash: [5, 4], borderWidth: 2, pointRadius: 0, tension: .2 },
             { type: 'line', label: 'Einnahmen €', data: savingsRate.income,
-              borderColor: '#2563eb', borderWidth: 1.5, pointRadius: 0, tension: .2 },
+              borderColor: palette[0], borderWidth: 1.5, pointRadius: 0, tension: .2 },
           ]"
           :options="{ scales: { y: { ticks: { callback: (v) => v + ' €' } } } }" />
         <ChartCanvas v-else type="bar"
           :labels="savingsRate.months"
           :datasets="[
             { label: 'tatsächlich gespart %', data: savingsRate.rate,
-              backgroundColor: savingsRate.rate.map((v) => v >= 0 ? '#0f766e' : '#b91c1c') },
+              backgroundColor: savingsRate.rate.map((v) => v >= 0 ? palette[1] : col.expense) },
             { type: 'line', label: 'Sparpotenzial (Einnahmen − Ausgaben) %', data: savingsRate.surplus_rate,
-              borderColor: '#9aa7b4', borderDash: [5, 4], borderWidth: 2, pointRadius: 0, tension: .2 },
+              borderColor: col.neutral, borderDash: [5, 4], borderWidth: 2, pointRadius: 0, tension: .2 },
           ]"
           :options="{ scales: { y: { ticks: { callback: (v) => v + ' %' } } } }" />
 
@@ -1071,6 +1108,115 @@ const NO_LEGEND = { plugins: { legend: { display: false } } }
           <router-link to="/wiederkehrend">Jetzt anlegen</router-link></p>
         </div>
         <router-link class="btn" style="margin-top: .5rem; display: inline-block" to="/wiederkehrend">Details →</router-link>
+      </div>
+
+
+      <!-- Der einzige Blick nach vorn: alles andere ist Rückschau (4.9) -->
+      <div v-if="isVisible('forecast') && forecast" class="tile wide" v-bind="tileProps('forecast')">
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('forecast')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
+                @pointerdown="startResize($event, 'forecast')"
+                @dblclick="resetSize('forecast')"></button>
+        <h3>Verfügbar bis Zahltag
+          <span class="hint">noch {{ forecast.days_left }} Tage bis {{ fmtDate(forecast.period_to) }}</span></h3>
+        <div class="kpi-row">
+          <div>
+            <span class="hint">Auf den Zahlungskonten</span>
+            <div class="big">{{ fmtAmount(forecast.balance_spending) }}</div>
+            <span class="hint" style="font-size: .8rem">{{ forecast.accounts.join(', ') }}</span>
+          </div>
+          <div>
+            <span class="hint">Noch fest verplant</span>
+            <div class="big neg">− {{ fmtAmount(forecast.upcoming_total) }}</div>
+            <span class="hint" style="font-size: .8rem">{{ forecast.charges.length }} Abbuchung(en)</span>
+          </div>
+          <div>
+            <span class="hint">Frei verfügbar</span>
+            <div class="big" :class="forecast.available >= 0 ? 'pos' : 'neg'">
+              {{ fmtAmount(forecast.available) }}</div>
+          </div>
+          <div v-if="forecast.days_left">
+            <span class="hint">Pro Tag</span>
+            <div class="big">{{ fmtAmount(forecast.per_day) }}</div>
+            <span class="hint" style="font-size: .8rem">bei gleichmäßiger Verteilung</span>
+          </div>
+        </div>
+        <table v-if="forecast.charges.length" style="margin-top: .5rem">
+          <tbody>
+            <tr v-for="c in forecast.charges" :key="c.name + c.due">
+              <td>{{ c.name }}</td>
+              <td class="hint">{{ fmtDate(c.due) }}</td>
+              <td class="num neg">− {{ fmtAmount(c.amount) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="hint" style="margin: .4rem 0 0">Nur Bekanntes: Sparkonten zählen nicht mit, variable
+          Ausgaben werden bewusst nicht geschätzt.</p>
+      </div>
+
+      <div v-if="isVisible('allocation') && summary" class="tile" v-bind="tileProps('allocation')">
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('allocation')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
+                @pointerdown="startResize($event, 'allocation')"
+                @dblclick="resetSize('allocation')"></button>
+        <h3>Vermögensaufteilung</h3>
+        <ChartCanvas v-if="allocation.length" type="doughnut"
+          :labels="allocation.map((a) => a.name)"
+          :datasets="[{ data: allocation.map((a) => a.balance),
+                        backgroundColor: allocation.map((a, i) => palette[i % palette.length]) }]" />
+        <p v-else class="hint">Keine Guthaben in dieser Auswahl.</p>
+        <p v-if="summary.liabilities_total" class="hint" style="margin: .4rem 0 0">
+          Zusätzlich <strong class="neg">{{ fmtAmount(summary.liabilities_total) }}</strong> Schulden –
+          im Gesamtvermögen bereits abgezogen.
+        </p>
+      </div>
+
+      <div v-if="isVisible('income_sources') && incomeSources" class="tile" v-bind="tileProps('income_sources')">
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('income_sources')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
+                @pointerdown="startResize($event, 'income_sources')"
+                @dblclick="resetSize('income_sources')"></button>
+        <h3>Einnahmen nach Quelle <span class="hint">{{ zeitraum }} · Klick öffnet die Buchungen</span></h3>
+        <ChartCanvas v-if="incomeSources.rows.length" type="bar" clickable @pick="pickIncomeSource"
+          :labels="incomeSources.rows.map((r) => r.counterparty)"
+          :datasets="[{ data: incomeSources.rows.map((r) => r.total), backgroundColor: palette }]"
+          :options="{ indexAxis: 'y', ...NO_LEGEND }" />
+        <p v-else class="hint">Keine Einnahmen im gewählten Zeitraum.</p>
+        <p v-if="incomeSources.rows.length" class="hint" style="margin: .4rem 0 0">
+          Größte Quelle: <strong>{{ incomeSources.rows[0].share }} %</strong> der Einnahmen.
+        </p>
+      </div>
+
+      <div v-if="isVisible('outliers') && outliers" class="tile wide" v-bind="tileProps('outliers')">
+        <button class="tile-close" data-tip="Kachel ausblenden – sie taucht oben als „+ Name“ wieder auf und ist jederzeit zurückholbar." data-tip-pos="left" @click="hide('outliers')">✕</button>
+        <button class="tile-resize" data-tip="Kachel größer oder kleiner ziehen. Doppelklick setzt auf die Standardgröße zurück. Wird die Kachel kleiner als ihr Inhalt, wächst sie mit, statt etwas abzuschneiden."
+                data-tip-pos="left"
+                @pointerdown="startResize($event, 'outliers')"
+                @dblclick="resetSize('outliers')"></button>
+        <h3>Auffällige Buchungen
+          <span class="hint">{{ zeitraum }} · deutlich teurer als sonst bei diesem Empfänger</span></h3>
+        <div class="tile-scroll">
+        <table v-if="outliers.rows.length">
+          <thead><tr><th>Datum</th><th>Empfänger</th><th class="num">Betrag</th>
+            <th class="num">sonst üblich</th><th class="num">Faktor</th></tr></thead>
+          <tbody>
+            <tr v-for="r in outliers.rows" :key="r.transaction_id">
+              <td>{{ fmtDate(r.booking_date) }}</td>
+              <td>{{ r.counterparty }}</td>
+              <td class="num neg">{{ fmtAmount(r.amount) }}</td>
+              <td class="num hint">{{ fmtAmount(r.median) }}</td>
+              <td class="num"><strong>{{ r.factor }}×</strong></td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="hint">Nichts Auffälliges – alle Buchungen liegen im üblichen Rahmen.</p>
+        </div>
+        <p class="hint" style="margin: .4rem 0 0">Verglichen wird mit dem <strong>Median</strong> aller
+          Buchungen desselben Empfängers, nicht mit dem Mittelwert: ein einzelner Ausreißer zieht den
+          Mittelwert selbst nach oben und versteckt sich darin.</p>
       </div>
 
       <!-- v1.2: Einzahlungstransparenz gemeinsames Konto (4.9) -->
