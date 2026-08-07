@@ -154,6 +154,15 @@ def detach(db: Session, tx: Transaction) -> int:
             other.transfer_id = None
     tx.transfer_id = None
     if transfer is not None:
+        # Ohne explizite relationship() zwischen Transaction und Transfer
+        # ordnet SQLAlchemy UPDATE/DELETE ueber Mapper-Grenzen hinweg nicht
+        # automatisch nach dem Fremdschluessel – erst flushen (die Zeilen
+        # oben verlieren ihre transfer_id in der DB), dann die Umbuchung
+        # loeschen. Sonst verletzt DELETE FROM transfers die Fremdschluessel-
+        # Constraint transactions.transfer_id -> transfers.id: PostgreSQL
+        # (Produktivsystem) erzwingt das, SQLite in der Testumgebung bislang
+        # nicht – deshalb fiel das dort nie auf.
+        db.flush()
         db.delete(transfer)
     return dropped
 
@@ -187,6 +196,7 @@ def unlink(db: Session, transfer: Transfer) -> int:
             dropped += 1
         else:
             tx.transfer_id = None
+    db.flush()   # siehe detach(): erst die Fremdschluessel loesen, dann die Umbuchung
     db.delete(transfer)
     db.commit()
     return dropped

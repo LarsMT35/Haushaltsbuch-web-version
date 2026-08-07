@@ -4,12 +4,17 @@ import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-# Test-DB: eigene SQLite-Datei je Testlauf, bevor app.db importiert wird
+# Test-DB: standardmäßig eine eigene SQLite-Datei je Testlauf (schnell, keine
+# Abhängigkeit) – bevor app.db importiert wird. Live läuft die App aber gegen
+# PostgreSQL (siehe docker-compose.yml); ist DATABASE_URL schon gesetzt (z.B.
+# von der CI-Postgres-Matrix oder lokal per `DATABASE_URL=postgresql+psycopg2
+# ://... pytest`), gilt diese Vorgabe statt der SQLite-Datei – dieselbe
+# Test-Suite läuft so unverändert gegen beide Engines.
 _tmp = tempfile.mkdtemp()
-os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
-os.environ["SECRET_KEY"] = "test-secret"
-os.environ["ADMIN_USERNAME"] = "admin"
-os.environ["ADMIN_PASSWORD"] = "admin"
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{_tmp}/test.db")
+os.environ.setdefault("SECRET_KEY", "test-secret")
+os.environ.setdefault("ADMIN_USERNAME", "admin")
+os.environ.setdefault("ADMIN_PASSWORD", "admin")
 
 import pytest
 from fastapi.testclient import TestClient

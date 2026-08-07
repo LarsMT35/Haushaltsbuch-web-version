@@ -78,6 +78,10 @@ npm install
 npm run dev
 
 # Tests (Import-Parser-Regressionstests + API-Flow, Prinzip 9)
+# – Standard: schnelle SQLite-Datei. Live läuft PostgreSQL 16 (siehe
+#   docker-compose.yml); gegen eine echte Postgres-Instanz testen z.B. per
+#   `docker run --rm -e POSTGRES_PASSWORD=test -p 5432:5432 postgres:16-alpine`
+#   und dann mit DATABASE_URL=postgresql+psycopg2://postgres:test@localhost/postgres
 cd backend && .venv/bin/python -m pytest tests/
 ```
 
@@ -471,6 +475,36 @@ automatisch aus.
   zusammengehörig erkennen und zählt weiterhin beide Seiten einzeln. Über
   „Umbuchungen erkennen“ in der Buchungsliste (oder manuell verknüpfen)
   lassen sich solche Paare nachträglich zusammenführen.
+
+### v1.8.4 – Testumgebung läuft jetzt auch gegen das echte Live-System
+
+- ✅ **Bisher testete die komplette Suite ausschließlich gegen SQLite**,
+  obwohl live PostgreSQL 16 läuft (siehe `docker-compose.yml`) – SQLite ist
+  laut README ausdrücklich nur der Entwicklungs-Fallback. Ein Fehler, der nur
+  auf PostgreSQL auftritt, wäre damit nie in CI aufgefallen, sondern erst
+  live beim Ausführen.
+- ✅ **Und genau das war der Fall**: Eine Umbuchung auflösen (Buchung löschen,
+  Import zurückrollen, Kategorie mit Zielkonto wechseln) löschte die
+  `Transfer`-Zeile, während verknüpfte Buchungen ihre `transfer_id` noch
+  nicht in der Datenbank verloren hatten. SQLite prüft Fremdschlüssel ohne
+  explizites `PRAGMA foreign_keys=ON` nicht – PostgreSQL dagegen schon und
+  hätte dort mit einem Fehler abgebrochen (`ForeignKeyViolation`). Betraf
+  u. a. `DELETE /transactions/{id}`, `DELETE /transfers/{id}` und den
+  Import-Rollback.
+- ✅ **Fix**: `detach()`/`unlink()` in `services/transfers.py` flushen die
+  gelösten/entkoppelten Buchungen jetzt explizit, bevor die Umbuchung selbst
+  gelöscht wird – SQLAlchemy ordnet UPDATE/DELETE über Tabellengrenzen hinweg
+  ohne `relationship()` nicht automatisch nach dem Fremdschlüssel.
+- ✅ **CI prüft ab jetzt beides**: Backend-Tests und der
+  Alembic-Migrationslauf laufen als Matrix gegen SQLite **und** PostgreSQL
+  16. `conftest.py` respektiert dafür eine bereits gesetzte `DATABASE_URL`
+  (z. B. aus der CI-Matrix), statt sie immer auf die eigene SQLite-Datei zu
+  überschreiben – lokal also weiterhin die schnelle SQLite-Voreinstellung,
+  wer will kann mit `DATABASE_URL=postgresql+psycopg2://... pytest` gezielt
+  gegen Postgres testen.
+- ✅ Alembic-Autogenerate gegen ein frisches PostgreSQL bei `head` bestätigt:
+  Datenmodell und Migrationshistorie stimmen überein, keine fehlende
+  Migration seit v1.7.1.
 
 Datenmodell umfasst bereits alle Entitäten aus Kapitel 6 (auch ExchangeRates
 für v2 – kein späterer Datenumbau nötig).

@@ -3,6 +3,14 @@ name: CI
 # Bis hierher liefen die Tests nur, wenn jemand daran dachte. Jetzt prüft jeder
 # Push und jeder Pull Request beides: dass die Backend-Tests durchlaufen und
 # dass das Frontend überhaupt baut.
+#
+# Backend-Tests und Migrationen laufen zusätzlich gegen ECHTES PostgreSQL 16
+# (siehe docker-compose.yml – das ist die Datenbank des Live-Systems, SQLite
+# ist nur der schnelle Entwicklungs-Fallback, siehe README). Reiner
+# SQLite-Betrieb hatte Fehler verdeckt, die erst auf PostgreSQL auftraten
+# (z.B. verletzt PostgreSQL Fremdschlüssel, die SQLite ohne explizites PRAGMA
+# stillschweigend ignoriert) – genau solche Fehler landeten sonst erst live
+# beim Nutzer statt hier.
 on:
   push:
     branches: [main]
@@ -11,8 +19,26 @@ on:
 
 jobs:
   backend:
-    name: Backend-Tests (pytest)
+    name: Backend-Tests (pytest, ${{ matrix.db }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [sqlite, postgres]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: haushaltsbuch_test
+          POSTGRES_USER: haushaltsbuch
+          POSTGRES_PASSWORD: haushaltsbuch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U haushaltsbuch"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +57,13 @@ jobs:
 
       - name: Tests
         working-directory: backend
-        run: pytest -q
+        run: |
+          if [ "${{ matrix.db }}" = "postgres" ]; then
+            export DATABASE_URL="postgresql+psycopg2://haushaltsbuch:haushaltsbuch@localhost:5432/haushaltsbuch_test"
+          fi
+          # sonst: kein DATABASE_URL gesetzt -> conftest.py greift auf die
+          # SQLite-Fallback-Datei zurück
+          pytest -q
 
   frontend:
     name: Frontend-Build
@@ -55,8 +87,26 @@ jobs:
         run: npm run build
 
   migrations:
-    name: Alembic-Migrationen laufen durch
+    name: Alembic-Migrationen laufen durch (${{ matrix.db }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [sqlite, postgres]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: haushaltsbuch_migcheck
+          POSTGRES_USER: haushaltsbuch
+          POSTGRES_PASSWORD: haushaltsbuch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U haushaltsbuch"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -74,9 +124,16 @@ jobs:
 
       # Die Migrationen laufen beim Container-Start automatisch – schlägt eine
       # fehl, merkt man es sonst erst beim Deployment auf dem Zielsystem.
+      # Live läuft PostgreSQL (docker-compose.yml); das ist der eigentlich
+      # relevante Check, SQLite bleibt als schnelle Zusatzprobe bestehen.
       - name: upgrade head auf leerer Datenbank
         working-directory: backend
         env:
-          DATABASE_URL: sqlite:///./ci-migration-check.db
           SECRET_KEY: ci-secret-key-nur-fuer-den-testlauf
-        run: alembic upgrade head
+        run: |
+          if [ "${{ matrix.db }}" = "postgres" ]; then
+            export DATABASE_URL="postgresql+psycopg2://haushaltsbuch:haushaltsbuch@localhost:5432/haushaltsbuch_migcheck"
+          else
+            export DATABASE_URL="sqlite:///./ci-migration-check.db"
+          fi
+          alembic upgrade head
